@@ -1,0 +1,26 @@
+[package]
+name = "relicario-daemon"
+description = "Serviço do Relicário que roda em cada máquina"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+publish.workspace = true
+
+[[bin]]
+name = "relicario-daemon"
+path = "src/main.rs"
+
+[dependencies]
+relicario-model.workspace = true
+relicario-engine.workspace = true
+relicario-store.workspace = true
+relicario-catalog.workspace = true
+relicario-watch.workspace = true
+relicario-transport.workspace = true
+relicario-platform.workspace = true
+
+[lints]
+workspace = true

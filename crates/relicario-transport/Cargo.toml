@@ -1,0 +1,16 @@
+[package]
+name = "relicario-transport"
+description = "Destinos remotos do Relicário (p2p, Google Drive, WebDAV, S3, SFTP, pasta)"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+publish.workspace = true
+
+[dependencies]
+relicario-model.workspace = true
+
+[lints]
+workspace = true

@@ -1,0 +1,16 @@
+[package]
+name = "relicario-plugins"
+description = "Leitores de save específicos de jogos para o Relicário"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+publish.workspace = true
+
+[dependencies]
+relicario-model.workspace = true
+
+[lints]
+workspace = true

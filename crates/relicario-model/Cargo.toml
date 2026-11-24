@@ -1,0 +1,15 @@
+[package]
+name = "relicario-model"
+description = "Tipos centrais do Relicário: jogos, máquinas, snapshots e heads"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+publish.workspace = true
+
+[dependencies]
+
+[lints]
+workspace = true

@@ -1,0 +1,16 @@
+[package]
+name = "relicario-engine"
+description = "Motor de decisão do Relicário (núcleo puro, sem I/O)"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+publish.workspace = true
+
+[dependencies]
+relicario-model.workspace = true
+
+[lints]
+workspace = true
