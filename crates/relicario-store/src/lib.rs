@@ -18,6 +18,7 @@ mod lock;
 pub mod ops;
 mod pack;
 pub mod prune;
+pub mod replicate;
 mod repo;
 pub mod time;
 pub mod verify;

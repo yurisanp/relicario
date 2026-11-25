@@ -4,7 +4,7 @@
 
 O Relicário guarda cada versão dos saves dos seus jogos, descobre sozinho qual é a mais atual entre várias máquinas e **nunca sobrescreve progresso sem guardar uma cópia antes**. É o Steam Cloud para os jogos que não têm Steam Cloud, com histórico de verdade.
 
-**Estado:** fases 1 a 3 concluídas (M1 "funciona na CLI", detecção automática de jogos e M2 "funciona sozinho" com o daemon). Ainda é para testes, não para seus saves de verdade; acompanhe o [roadmap](docs/roadmap.md).
+**Estado:** fases 1 a 4 concluídas (M1 "funciona na CLI", detecção automática de jogos, M2 "funciona sozinho" com o daemon e sincronização direta entre máquinas). Ainda é para testes, não para seus saves de verdade; acompanhe o [roadmap](docs/roadmap.md).
 
 ## Como vai funcionar
 
@@ -24,14 +24,15 @@ Plataformas da 1.0: Linux (incluindo Steam Deck), Windows e macOS.
 | [`relicario-store`](crates/relicario-store) | Repositório de blocos (FastCDC + BLAKE3 + zstd + AEAD) |
 | [`relicario-catalog`](crates/relicario-catalog) | Manifesto, detectores de loja e caminhos |
 | [`relicario-watch`](crates/relicario-watch) | Vigia de processos e arquivos |
-| [`relicario-transport`](crates/relicario-transport) | Destinos remotos: p2p, Drive, WebDAV, S3, SFTP, pasta |
+| [`relicario-transport`](crates/relicario-transport) | Destinos remotos: Drive, WebDAV, S3, SFTP, pasta |
+| [`relicario-p2p`](crates/relicario-p2p) | Sincronização direta: QUIC, pareamento SPAKE2, mDNS |
 | [`relicario-platform`](crates/relicario-platform) | Caminhos, serviço, segredos e notificações por sistema |
 | [`relicario-daemon`](crates/relicario-daemon) | Serviço que orquestra tudo e expõe a API local |
 | [`relicario-cli`](crates/relicario-cli) | Linha de comando `relicario` |
 | [`relicario-ui`](crates/relicario-ui) | Interface em Tauri 2 (a partir da fase 6) |
 | [`relicario-plugins`](crates/relicario-plugins) | Leitores de save específicos de jogos |
 
-Documentação em [`docs/`](docs): [roadmap](docs/roadmap.md), [conectores de armazenamento](docs/conectores.md), [decisões de arquitetura](docs/adr), [formato do repositório](docs/format.md), [catálogo de jogos](docs/catalogo.md), [daemon](docs/daemon.md) e o [protótipo da interface](docs/design/prototipo.html).
+Documentação em [`docs/`](docs): [roadmap](docs/roadmap.md), [conectores de armazenamento](docs/conectores.md), [decisões de arquitetura](docs/adr), [formato do repositório](docs/format.md), [catálogo de jogos](docs/catalogo.md), [daemon](docs/daemon.md), [sincronização direta](docs/p2p.md) e o [protótipo da interface](docs/design/prototipo.html).
 
 ## Compilar
 
@@ -87,6 +88,17 @@ relicario apps              # executáveis desconhecidos vistos em pastas de jog
 ```
 
 Detalhes em [docs/daemon.md](docs/daemon.md).
+
+### Entre máquinas, sem nuvem
+
+```sh
+relicario pair              # na máquina A: mostra um código de 6 dígitos
+relicario pair 123 456      # na máquina B, na mesma rede (ou --addr host)
+relicario peers list
+relicario peers sync
+```
+
+Detalhes em [docs/p2p.md](docs/p2p.md).
 
 ## Contribuir
 

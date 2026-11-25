@@ -5,5 +5,6 @@ pub mod config;
 pub mod games;
 pub mod ipc;
 pub mod lifecycle;
+pub mod p2p;
 pub mod server;
 pub mod state;

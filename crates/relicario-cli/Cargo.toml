@@ -22,6 +22,7 @@ relicario-platform.workspace = true
 relicario-catalog.workspace = true
 relicario-daemon.workspace = true
 relicario-watch.workspace = true
+relicario-p2p.workspace = true
 serde_json.workspace = true
 clap.workspace = true
 serde.workspace = true

@@ -26,6 +26,16 @@ pub enum Request {
         game: Option<String>,
     },
     Rescan,
+    /// Relê a configuração (depois de parear, por exemplo).
+    Reload,
+    /// Abre o pareamento com este código por 5 minutos.
+    PairStart {
+        code: String,
+    },
+    PairStatus,
+    PairCancel,
+    /// Replica agora com as máquinas pareadas.
+    PeersSync,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

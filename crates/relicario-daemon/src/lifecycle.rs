@@ -166,6 +166,12 @@ pub fn sync_game(
 /// jogo como aberto nesta máquina e avisa se ele está aberto em outra.
 pub fn before_launch(cfg: &Config, game: &Game) -> Result<Vec<String>, String> {
     let mut msgs = Vec::new();
+    // Par direto primeiro, com limite curto: o jogo não pode esperar.
+    for p in crate::p2p::sync_peers(cfg, &[], Duration::from_secs(3)) {
+        if !p.ok {
+            msgs.push(p.message);
+        }
+    }
     let out = sync_game(cfg, game, SnapshotReason::Periodic, true)?;
     msgs.push(out.describe(game.title()));
     if let SyncOutcome::Conflito { .. } = out {
@@ -259,7 +265,11 @@ pub fn after_exit(
         ops::add_playtime(&mut l, &id, (now - t) as u64).map_err(|e| e.to_string())?;
     }
     ops::set_running(&mut l, &id, None).map_err(|e| e.to_string())?;
-    Ok(vec![out.describe(game.title())])
+    let mut msgs = vec![out.describe(game.title())];
+    for p in crate::p2p::sync_peers(cfg, &[], Duration::from_secs(3)) {
+        msgs.push(p.message);
+    }
+    Ok(msgs)
 }
 
 pub fn notify(title: &str, body: &str) {
