@@ -1,7 +1,14 @@
 //! Camada de plataforma: caminhos, serviço do usuário, segredos, notificações e lançadores.
 //!
-//! Fase 1: identificação do sistema, pastas padrão e nome da máquina. Serviço, segredos e
-//! notificações chegam nas fases 3 e 5.
+//! - identificação do sistema, pastas padrão e nome da máquina;
+//! - [`notify`]: notificações nativas;
+//! - [`service`]: instalar o daemon como serviço do usuário (systemd `--user`, tarefa agendada
+//!   no Windows, LaunchAgent no macOS).
+//!
+//! Segredos (chaveiro do sistema) chegam na fase 5.
+
+pub mod notify;
+pub mod service;
 
 use std::path::PathBuf;
 

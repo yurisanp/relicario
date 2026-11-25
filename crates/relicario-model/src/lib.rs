@@ -299,6 +299,16 @@ pub struct HeadsFile {
     /// para a árvore continuar inteira.
     #[serde(default)]
     pub forgotten: BTreeSet<SnapshotId>,
+    /// Tempo de jogo acumulado nesta máquina, em milissegundos.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub playtime: BTreeMap<GameId, u64>,
+    /// Jogos abertos agora nesta máquina, com o horário em que abriram.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub running: BTreeMap<GameId, Millis>,
+    /// Executáveis que o usuário associou a cada jogo nesta máquina. As outras máquinas usam a
+    /// mesma lista de nomes (o caminho de cada uma é ajustado localmente).
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub associations: BTreeMap<GameId, Vec<String>>,
     pub updated_at: Millis,
 }
 

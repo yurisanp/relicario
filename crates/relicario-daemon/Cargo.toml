@@ -9,6 +9,9 @@ repository.workspace = true
 authors.workspace = true
 publish.workspace = true
 
+[lib]
+path = "src/lib.rs"
+
 [[bin]]
 name = "relicario-daemon"
 path = "src/main.rs"
@@ -21,6 +24,15 @@ relicario-catalog.workspace = true
 relicario-watch.workspace = true
 relicario-transport.workspace = true
 relicario-platform.workspace = true
+blake3.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+toml.workspace = true
+getrandom.workspace = true
+interprocess.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
 
 [lints]
 workspace = true

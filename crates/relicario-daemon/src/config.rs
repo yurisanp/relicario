@@ -25,6 +25,20 @@ pub struct Config {
     /// fase 5).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub steamgriddb_key: Option<String>,
+    /// Intervalo da conferência periódica, em segundos (padrão: 1 hora).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub periodic_secs: Option<u64>,
+}
+
+impl Config {
+    /// Repositório desta configuração.
+    pub fn open_repo(&self) -> Result<relicario_store::Repository, String> {
+        let p = relicario_platform::expand_home(&self.repo.to_string_lossy());
+        relicario_store::Repository::open(std::sync::Arc::new(
+            relicario_transport::LocalFolder::new(p),
+        ))
+        .map_err(|e| e.to_string())
+    }
 }
 
 fn yes() -> bool {
@@ -38,6 +52,9 @@ pub struct GameConfig {
     pub name: String,
     #[serde(default)]
     pub roots: Vec<RootConfig>,
+    /// Executáveis do jogo (nome ou caminho), para o vigia de processos.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub executables: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

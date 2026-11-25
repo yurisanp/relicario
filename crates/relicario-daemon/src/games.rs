@@ -98,6 +98,7 @@ fn to_config(d: &DetectedGame) -> GameConfig {
                     .collect(),
             })
             .collect(),
+        executables: d.executables.clone(),
     }
 }
 
@@ -134,4 +135,59 @@ pub fn find(cfg: &Config, id: &str) -> Result<Game, String> {
     all(cfg)?.into_iter().find(|g| g.id() == id).ok_or_else(|| {
         format!("jogo {id:?} não encontrado; veja `relicario game list` ou rode `relicario scan`")
     })
+}
+
+/// Como reconhecer cada jogo entre os processos: executáveis do manifesto, pasta de instalação,
+/// executáveis cadastrados e associações feitas pelo usuário em qualquer máquina.
+pub fn matcher(
+    all: &[Game],
+    associations: &std::collections::BTreeMap<relicario_model::GameId, Vec<String>>,
+) -> relicario_watch::Matcher {
+    let mut v = Vec::new();
+    for g in all {
+        let mut m = relicario_watch::GameMatch {
+            id: g.id().to_string(),
+            ..Default::default()
+        };
+        for e in &g.config.executables {
+            if e.contains('/') || e.contains('\\') {
+                m.exe_paths.push(relicario_platform::expand_home(e));
+            }
+            m.exe_names.push(e.clone());
+        }
+        if let Some(d) = &g.detected
+            && let Some(dir) = &d.install_dir
+            && d.launcher.is_some()
+        {
+            m.install_dirs.push(dir.clone());
+        }
+        if let Some(a) = associations.get(&relicario_model::GameId::new(g.id())) {
+            m.exe_names.extend(a.iter().cloned());
+        }
+        if !m.exe_names.is_empty() || !m.exe_paths.is_empty() || !m.install_dirs.is_empty() {
+            v.push(m);
+        }
+    }
+    relicario_watch::Matcher::new(v)
+}
+
+/// Pastas de biblioteca onde um executável desconhecido provavelmente é um jogo.
+pub fn library_dirs(home: &std::path::Path) -> Vec<PathBuf> {
+    let d = relicario_catalog::stores::discover(home);
+    let mut v: Vec<PathBuf> = d
+        .steam_roots
+        .iter()
+        .flat_map(|r| relicario_catalog::stores::steam::libraries(r))
+        .map(|l| l.join("steamapps/common"))
+        .collect();
+    v.push(home.join("Games"));
+    v.push(home.join("games"));
+    v
+}
+
+/// O jogo está aberto agora nesta máquina?
+pub fn is_running(game: &Game, matcher: &relicario_watch::Matcher) -> bool {
+    relicario_watch::procs::list()
+        .iter()
+        .any(|p| matcher.match_proc(p) == Some(game.id()))
 }

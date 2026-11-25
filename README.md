@@ -4,7 +4,7 @@
 
 O Relicário guarda cada versão dos saves dos seus jogos, descobre sozinho qual é a mais atual entre várias máquinas e **nunca sobrescreve progresso sem guardar uma cópia antes**. É o Steam Cloud para os jogos que não têm Steam Cloud, com histórico de verdade.
 
-**Estado:** fases 1 e 2 concluídas (M1 "funciona na CLI" e detecção automática de jogos). Ainda é para testes, não para seus saves de verdade; acompanhe o [roadmap](docs/roadmap.md).
+**Estado:** fases 1 a 3 concluídas (M1 "funciona na CLI", detecção automática de jogos e M2 "funciona sozinho" com o daemon). Ainda é para testes, não para seus saves de verdade; acompanhe o [roadmap](docs/roadmap.md).
 
 ## Como vai funcionar
 
@@ -31,7 +31,7 @@ Plataformas da 1.0: Linux (incluindo Steam Deck), Windows e macOS.
 | [`relicario-ui`](crates/relicario-ui) | Interface em Tauri 2 (a partir da fase 6) |
 | [`relicario-plugins`](crates/relicario-plugins) | Leitores de save específicos de jogos |
 
-Documentação em [`docs/`](docs): [roadmap](docs/roadmap.md), [conectores de armazenamento](docs/conectores.md), [decisões de arquitetura](docs/adr), [formato do repositório](docs/format.md), [catálogo de jogos](docs/catalogo.md) e o [protótipo da interface](docs/design/prototipo.html).
+Documentação em [`docs/`](docs): [roadmap](docs/roadmap.md), [conectores de armazenamento](docs/conectores.md), [decisões de arquitetura](docs/adr), [formato do repositório](docs/format.md), [catálogo de jogos](docs/catalogo.md), [daemon](docs/daemon.md) e o [protótipo da interface](docs/design/prototipo.html).
 
 ## Compilar
 
@@ -70,6 +70,23 @@ relicario pin 3f2a9c --name "antes do chefe"
 relicario verify --read-data
 relicario prune             # aplica a retenção e libera espaço
 ```
+
+### Sozinho, sem lembrar de sincronizar
+
+```sh
+relicario service install   # daemon inicia com a sessão (systemd --user, Agendador do Windows, LaunchAgent)
+relicario daemon status     # jogos abertos agora
+relicario launcher install  # Steam (fechada), Heroic e Lutris abrem os jogos pelo `relicario run`
+
+# Ou à mão, nas opções de inicialização de qualquer loja:
+relicario run -- %command%
+relicario run --game hookshot -- ./Hookshot
+
+relicario associate hookshot --exe Hookshot.x86_64   # quando o executável não é reconhecido
+relicario apps              # executáveis desconhecidos vistos em pastas de jogos
+```
+
+Detalhes em [docs/daemon.md](docs/daemon.md).
 
 ## Contribuir
 
