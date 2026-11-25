@@ -792,7 +792,7 @@ fn cmd_restore(
             }
         }
     };
-    let out = ops::restore(l, &spec, target).map_err(s)?;
+    let out = ops::rollback(l, &spec, target).map_err(s)?;
     if let Some(sf) = out.safety {
         println!("cópia de segurança do estado anterior: {}", sf.short());
     }

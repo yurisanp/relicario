@@ -93,18 +93,11 @@ fn new_password() -> R<String> {
 }
 
 fn gdrive_login() -> R<(String, String, String)> {
-    let (id, secret) = relicario_daemon::oauth::client().ok_or(
-        "esta versão ainda não tem o client do Google Drive; defina RELICARIO_GDRIVE_CLIENT_ID e RELICARIO_GDRIVE_CLIENT_SECRET",
-    )?;
-    let p = relicario_daemon::oauth::start(&id)?;
-    println!(
-        "Abrindo o navegador para entrar no Google. Se não abrir, use este endereço:\n\n  {}\n",
-        p.url
-    );
-    relicario_daemon::oauth::open_browser(&p.url);
-    let code = relicario_daemon::oauth::wait_code(&p, std::time::Duration::from_secs(300))?;
-    let token = relicario_daemon::oauth::exchange(&p, &id, &secret, &code)?;
-    Ok((id, secret, token))
+    relicario_daemon::oauth::gdrive_login(|url| {
+        println!(
+            "Abrindo o navegador para entrar no Google. Se não abrir, use este endereço:\n\n  {url}\n"
+        )
+    })
 }
 
 fn find<'a>(cfg: &'a Config, name: &str) -> R<&'a CloudConfig> {

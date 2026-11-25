@@ -130,3 +130,4 @@ pub fn pairing_targets(addr: Option<&str>, wait: Duration) -> Vec<SocketAddr> {
         .flat_map(|f| f.addrs)
         .collect()
 }
+pub use relicario_p2p::new_code;

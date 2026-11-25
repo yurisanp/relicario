@@ -287,6 +287,41 @@ pub fn restore(l: &mut Local<'_>, game: &GameSpec, target: SnapshotId) -> Result
     Ok(RestoreOutcome { safety, report })
 }
 
+/// Restauração pedida pelo usuário. Se `target` já descende do head (ou é ele), é só uma
+/// restauração. Se é uma versão antiga ou de outro ramo, o conteúdo volta ao disco e vira um
+/// snapshot novo, filho do head atual: assim as outras máquinas recebem a volta como a versão
+/// mais nova, em vez de desfazê-la na próxima sincronização ou acusar conflito.
+pub fn rollback(l: &mut Local<'_>, game: &GameSpec, target: SnapshotId) -> Result<RestoreOutcome> {
+    let head = l.head_of(&game.id)?;
+    let forward = match head {
+        None => true,
+        Some(h) => matches!(
+            graph(l.repo, &game.id)?.is_ancestor(&h, &target),
+            relicario_engine::graph::Ancestry::Sim
+        ),
+    };
+    let out = restore(l, game, target)?;
+    if forward {
+        return Ok(out);
+    }
+    let snap = l.repo.get_snapshot(&target)?;
+    let tree = l.repo.get_tree(&snap.tree)?;
+    let parent = out.safety.or(head);
+    let id = {
+        let _lock = l.repo.lock(&l.machine, crate::lock::LockMode::Shared)?;
+        write_snapshot(
+            l,
+            game,
+            &tree,
+            parent.into_iter().collect(),
+            SnapshotReason::Restored,
+            vec![],
+        )?
+    };
+    l.set_head(&game.id, id)?;
+    Ok(out)
+}
+
 /// Resolve um conflito ficando com o conteúdo de `keep`. Grava um snapshot de merge (pais:
 /// `keep` e as outras pontas), restaura esse conteúdo no disco (com cópia de segurança, como
 /// toda restauração) e faz dele o head. As outras versões continuam no histórico.

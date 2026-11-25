@@ -266,6 +266,9 @@ pub enum SnapshotReason {
     Merge,
     /// Importado de outra ferramenta (Ludusavi).
     Import,
+    /// Volta a uma versão antiga, pedida pelo usuário: mesmo conteúdo, mas descende do head
+    /// atual, para que as outras máquinas sigam a volta em vez de ver um conflito.
+    Restored,
 }
 
 /// Motivo para desconfiar de um save novo.

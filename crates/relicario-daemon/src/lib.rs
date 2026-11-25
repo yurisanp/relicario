@@ -12,4 +12,5 @@ pub mod ludusavi;
 pub mod oauth;
 pub mod p2p;
 pub mod server;
+pub mod setup;
 pub mod state;
