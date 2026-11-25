@@ -15,13 +15,11 @@ default = ["net"]
 net = ["dep:ureq"]
 
 [dependencies]
-relicario-model.workspace = true
 relicario-platform.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 serde_yaml_ng.workspace = true
 thiserror.workspace = true
-glob.workspace = true
 globset.workspace = true
 blake3.workspace = true
 ureq = { workspace = true, optional = true }

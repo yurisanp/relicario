@@ -92,6 +92,12 @@ pub enum Call {
         game: String,
         kind: ArtKind,
     },
+    /// Troca a arte por uma imagem escolhida pelo usuário.
+    ArtFile {
+        game: String,
+        kind: ArtKind,
+        path: PathBuf,
+    },
     /// Exporta um snapshot num `.zip`.
     ExportZip {
         game: String,
@@ -162,6 +168,7 @@ fn reason(r: SnapshotReason) -> &'static str {
         SnapshotReason::BeforeRestore => "antes_de_restaurar",
         SnapshotReason::Merge => "resolucao",
         SnapshotReason::Import => "importado",
+        SnapshotReason::Restored => "restaurado",
     }
 }
 
@@ -289,6 +296,13 @@ impl Daemon {
                     .map_err(|e| e.to_string())?;
                 self.art(&game, kind)
             }
+            Call::ArtFile { game, kind, path } => {
+                let (cfg, _) = self.game(&game)?;
+                crate::games::art_cache(&cfg)
+                    .set_override(&game, kind, &path)
+                    .map_err(|e| e.to_string())?;
+                self.art(&game, kind)
+            }
             Call::ArtReset { game, kind } => {
                 let (cfg, _) = self.game(&game)?;
                 crate::games::art_cache(&cfg).clear(&game, kind);
@@ -310,10 +324,23 @@ impl Daemon {
                 Ok(())
             }),
             Call::CloudAdd {
-                cloud,
-                secret,
+                mut cloud,
+                mut secret,
                 password,
             } => {
+                // Google Drive: entra pelo navegador (espera até 5 minutos).
+                if let relicario_transport::CloudSpec::Gdrive {
+                    client_id,
+                    client_secret,
+                    ..
+                } = &mut cloud.spec
+                    && secret.is_none()
+                {
+                    let (id, sec, token) = crate::oauth::gdrive_login(|_| {})?;
+                    *client_id = id;
+                    *client_secret = sec;
+                    secret = Some(token);
+                }
                 let mut cfg = Config::load()?;
                 let name = cloud.name.clone();
                 let added = crate::cloud::add(&mut cfg, cloud, secret, password)?;
@@ -714,7 +741,7 @@ impl Daemon {
         }
         let spec = g.config.spec()?;
         let sid = parse_id(snapshot)?;
-        let out = self.with_local(|l| ops::restore(l, &spec, sid).map_err(|e| e.to_string()))?;
+        let out = self.with_local(|l| ops::rollback(l, &spec, sid).map_err(|e| e.to_string()))?;
         let text = match out.safety {
             Some(s) => format!(
                 "{}: voltou para {} (o save de antes virou {})",

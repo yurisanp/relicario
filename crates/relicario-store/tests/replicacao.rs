@@ -237,3 +237,60 @@ fn resolver_conflito_mantendo_a_versao_da_outra_maquina() {
         other => panic!("{other:?}"),
     }
 }
+
+#[test]
+fn voltar_a_uma_versao_antiga_vale_para_as_outras_maquinas() {
+    let t = tempfile::tempdir().unwrap();
+    let a = Machine::new(t.path(), "pc", "PC");
+    let b = Machine::new(t.path(), "note", "Notebook");
+    Repository::init(Arc::new(a.remote())).unwrap();
+    Repository::init(Arc::new(b.remote())).unwrap();
+    a.play(b"capitulo 1");
+    a.play(b"capitulo 2 (save estragado)");
+    let first = a.with(|l| {
+        ops::game_snapshots(l.repo, &GameId::new("hookshot"))
+            .unwrap()
+            .first()
+            .unwrap()
+            .0
+    });
+    replicate(&a.remote(), &b.remote(), &a.id).unwrap();
+    let Action::Avancar { to, .. } = b.plan() else {
+        panic!("{:?}", b.plan())
+    };
+    b.with(|l| ops::restore(l, &spec(&b.save), to).unwrap());
+    replicate(&b.remote(), &a.remote(), &b.id).unwrap();
+
+    // A volta ao capítulo 1. Vira uma versão nova, filha da atual.
+    a.with(|l| ops::rollback(l, &spec(&a.save), first).unwrap());
+    assert_eq!(fs::read(a.save.join("caption.sav")).unwrap(), b"capitulo 1");
+    // Para A, é só uma versão nova a enviar.
+    assert_eq!(a.plan(), Action::Enviar);
+    let head = a.with(|l| l.head_of(&GameId::new("hookshot")).unwrap().unwrap());
+    assert_ne!(head, first);
+    let s = a.with(|l| l.repo.get_snapshot(&head).unwrap());
+    assert_eq!(s.reason, SnapshotReason::Restored);
+
+    // B recebe a volta como novidade, sem conflito.
+    replicate(&a.remote(), &b.remote(), &a.id).unwrap();
+    let Action::Avancar { to, .. } = b.plan() else {
+        panic!("{:?}", b.plan())
+    };
+    assert_eq!(to, head);
+    b.with(|l| ops::restore(l, &spec(&b.save), to).unwrap());
+    assert_eq!(fs::read(b.save.join("caption.sav")).unwrap(), b"capitulo 1");
+
+    // Voltar para a frente (uma versão que já descende do head) só restaura.
+    let n = a.with(|l| {
+        ops::game_snapshots(l.repo, &GameId::new("hookshot"))
+            .unwrap()
+            .len()
+    });
+    a.with(|l| ops::rollback(l, &spec(&a.save), head).unwrap());
+    let n2 = a.with(|l| {
+        ops::game_snapshots(l.repo, &GameId::new("hookshot"))
+            .unwrap()
+            .len()
+    });
+    assert_eq!(n, n2);
+}

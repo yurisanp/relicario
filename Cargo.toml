@@ -35,7 +35,6 @@ clap = { version = "4.5", features = ["derive"] }
 getrandom = "0.3"
 proptest = "1"
 serde_yaml_ng = "0.10"
-glob = "0.3"
 ureq = { version = "3", default-features = false, features = ["rustls", "gzip"] }
 winreg = "0.56"
 interprocess = "2"
@@ -56,6 +55,10 @@ rpassword = "7"
 lz4_flex = { version = "0.14", default-features = false, features = ["std", "safe-decode", "frame"] }
 flate2 = "1"
 base64 = "0.22"
+tauri = { version = "2.12", features = ["tray-icon", "image-png"] }
+tauri-build = { version = "2.7", features = [] }
+tauri-plugin-dialog = "2.8"
+tauri-plugin-single-instance = "2.5"
 keyring = { version = "3", features = ["apple-native", "windows-native", "async-secret-service", "tokio", "crypto-rust"] }
 reqwest = { version = "0.13", default-features = false, features = ["rustls-no-provider", "http2"] }
 opendal-http-transport-reqwest = { version = "0.59", default-features = false, features = ["rustls-no-provider"] }

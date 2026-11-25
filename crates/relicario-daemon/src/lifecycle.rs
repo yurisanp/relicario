@@ -73,7 +73,14 @@ impl SyncOutcome {
                 format!("{title}: só histórico (a nuvem da loja traz o save de {from})")
             }
             SyncOutcome::Conflito { tips } => {
-                let t: Vec<String> = tips.iter().map(|(m, s)| format!("{m} ({s})")).collect();
+                let t: Vec<String> = tips
+                    .iter()
+                    .map(|(m, s)| {
+                        let m = m.to_string();
+                        let m = if m == "<local>" { "esta máquina" } else { &m };
+                        format!("{m} ({s})")
+                    })
+                    .collect();
                 format!(
                     "{title}: CONFLITO entre {}; nada foi restaurado",
                     t.join(", ")

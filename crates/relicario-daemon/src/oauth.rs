@@ -218,6 +218,20 @@ pub fn exchange(
         .ok_or_else(|| format!("o Google não devolveu um token de atualização: {v}"))
 }
 
+/// Entra no Google Drive pelo navegador: devolve (client id, client secret, refresh token).
+/// `show` recebe o endereço, para quem chamou mostrar caso o navegador não abra.
+pub fn gdrive_login(show: impl FnOnce(&str)) -> Result<(String, String, String), String> {
+    let (id, secret) = client().ok_or(
+        "esta versão ainda não tem o client do Google Drive; defina RELICARIO_GDRIVE_CLIENT_ID e RELICARIO_GDRIVE_CLIENT_SECRET",
+    )?;
+    let p = start(&id)?;
+    show(&p.url);
+    open_browser(&p.url);
+    let code = wait_code(&p, Duration::from_secs(300))?;
+    let token = exchange(&p, &id, &secret, &code)?;
+    Ok((id, secret, token))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

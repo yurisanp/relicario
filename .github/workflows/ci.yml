@@ -27,6 +27,8 @@ jobs:
         with:
           components: rustfmt
       - run: cargo fmt --all --check
+      - name: Interface (sintaxe e textos)
+        run: node crates/relicario-ui/ui/check.mjs
 
   test:
     name: Testes (${{ matrix.os }})
@@ -41,6 +43,11 @@ jobs:
         with:
           components: clippy
       - uses: Swatinem/rust-cache@v2
+      - name: Dependências da interface (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev libxdo-dev libssl-dev
       - run: cargo clippy --workspace --all-targets -- -D warnings
       - run: cargo test --workspace
       - run: cargo run -p relicario-cli -- doctor
@@ -51,6 +58,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@1.91
+      - name: Dependências da interface (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev libxdo-dev libssl-dev
       - run: cargo +1.91 check --workspace --all-targets
 
   deny:
