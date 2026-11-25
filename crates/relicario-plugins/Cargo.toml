@@ -10,7 +10,11 @@ authors.workspace = true
 publish.workspace = true
 
 [dependencies]
-relicario-model.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+lz4_flex.workspace = true
+flate2.workspace = true
+zstd.workspace = true
 
 [lints]
 workspace = true

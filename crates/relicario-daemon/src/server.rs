@@ -50,45 +50,48 @@ impl Timing {
 }
 
 #[derive(Debug)]
-struct Inner {
-    cfg: Config,
-    games: Vec<Game>,
-    watcher: Watcher,
+pub(crate) struct Inner {
+    pub(crate) cfg: Config,
+    pub(crate) games: Vec<Game>,
+    pub(crate) watcher: Watcher,
     /// Quando cada jogo aberto começou (para o tempo de jogo).
-    started: BTreeMap<String, i64>,
+    pub(crate) started: BTreeMap<String, i64>,
     /// Jogos abertos pelo `relicario run`: o `run` cuida do antes e do depois.
-    external: BTreeSet<String>,
-    state: State,
-    libraries: Vec<std::path::PathBuf>,
+    pub(crate) external: BTreeSet<String>,
+    pub(crate) state: State,
+    pub(crate) libraries: Vec<std::path::PathBuf>,
 }
 
 /// Máquinas achadas por mDNS: (id, endereços).
-type Discovered = Vec<(String, Vec<std::net::SocketAddr>)>;
+pub(crate) type Discovered = Vec<(String, Vec<std::net::SocketAddr>)>;
 
 /// Sincronização direta: servidor, anúncio na rede e o que foi descoberto.
 #[derive(Debug)]
-struct P2p {
-    server: relicario_p2p::Server,
-    peers: Arc<RwLock<Vec<relicario_p2p::Peer>>>,
+pub(crate) struct P2p {
+    pub(crate) server: relicario_p2p::Server,
+    pub(crate) peers: Arc<RwLock<Vec<relicario_p2p::Peer>>>,
     _advert: Option<relicario_p2p::discovery::Advert>,
-    discovered: Arc<Mutex<Discovered>>,
-    last_paired: Arc<Mutex<Option<String>>>,
+    pub(crate) discovered: Arc<Mutex<Discovered>>,
+    pub(crate) last_paired: Arc<Mutex<Option<String>>>,
 }
 
 /// O daemon. `work` serializa as operações no repositório desta máquina.
 #[derive(Debug)]
 pub struct Daemon {
-    inner: Mutex<Inner>,
-    work: Mutex<()>,
-    p2p: Mutex<Option<P2p>>,
+    pub(crate) inner: Mutex<Inner>,
+    pub(crate) work: Mutex<()>,
+    pub(crate) p2p: Mutex<Option<P2p>>,
     /// Um par gravou um head novo aqui: vale conferir os jogos.
-    remote_changed: Arc<AtomicBool>,
+    pub(crate) remote_changed: Arc<AtomicBool>,
     /// Há snapshot novo para mandar à nuvem.
-    cloud_dirty: AtomicBool,
+    pub(crate) cloud_dirty: AtomicBool,
     /// Uma replicação com a nuvem está rodando.
-    cloud_busy: Arc<AtomicBool>,
+    pub(crate) cloud_busy: Arc<AtomicBool>,
     /// Último aviso de login por nuvem (para não repetir toda hora).
     auth_warned: Arc<Mutex<BTreeMap<String, Instant>>>,
+    /// Rodando como `relicario daemon` (o `Stop` termina o processo).
+    pub(crate) standalone: AtomicBool,
+    pub(crate) stopped: AtomicBool,
 }
 
 fn log(msg: &str) {
@@ -121,6 +124,8 @@ impl Daemon {
             cloud_dirty: AtomicBool::new(true),
             cloud_busy: Arc::new(AtomicBool::new(false)),
             auth_warned: Arc::new(Mutex::new(BTreeMap::new())),
+            standalone: AtomicBool::new(false),
+            stopped: AtomicBool::new(false),
         }))
     }
 
@@ -203,15 +208,18 @@ impl Daemon {
             .unwrap_or_default();
         let r = crate::p2p::sync_peers(&cfg, &disc, timeout);
         let changed = r.iter().any(|p| p.heads_in);
+        for p in r.iter().filter(|p| p.heads_in) {
+            crate::activity::record("par", None, p.message.clone());
+        }
         (r.into_iter().map(|p| p.message).collect(), changed)
     }
 
-    fn snapshot(&self) -> (Config, Vec<Game>) {
+    pub(crate) fn snapshot(&self) -> (Config, Vec<Game>) {
         let i = self.inner.lock().expect("lock");
         (i.cfg.clone(), i.games.clone())
     }
 
-    fn game(&self, id: &str) -> Result<(Config, Game), String> {
+    pub(crate) fn game(&self, id: &str) -> Result<(Config, Game), String> {
         let (cfg, all) = self.snapshot();
         let g = all
             .into_iter()
@@ -258,12 +266,19 @@ impl Daemon {
                 };
             }
             Request::Stop => {
-                std::thread::spawn(|| {
-                    std::thread::sleep(Duration::from_millis(100));
-                    log("parando a pedido");
-                    std::process::exit(0);
-                });
-                Ok(vec!["parando".into()])
+                if self.standalone.load(Ordering::SeqCst) {
+                    std::thread::spawn(|| {
+                        std::thread::sleep(Duration::from_millis(100));
+                        log("parando a pedido");
+                        std::process::exit(0);
+                    });
+                    Ok(vec!["parando".into()])
+                } else {
+                    Err(
+                        "o serviço está dentro da interface do Relicário; feche-a pela bandeja"
+                            .into(),
+                    )
+                }
             }
             Request::Launching { game } => self.game(&game).and_then(|(cfg, g)| {
                 self.inner
@@ -316,6 +331,12 @@ impl Daemon {
                     p.server.cancel_pairing();
                 }
                 Ok(vec![])
+            }
+            Request::Api { call } => {
+                return match self.api(call) {
+                    Ok(value) => Response::Api { value },
+                    Err(message) => Response::Error { message },
+                };
             }
             Request::PeersSync => {
                 let (m, changed) = self.sync_peers(Duration::from_secs(5));
@@ -381,6 +402,7 @@ impl Daemon {
                 let Ok((cfg, g)) = self.game(&game) else {
                     return;
                 };
+                crate::activity::record("aberto", Some(&game), format!("{} abriu", g.title()));
                 let _w = self.work.lock().expect("lock");
                 // O jogo já está aberto: guarda o que havia antes, mas não restaura nada.
                 match lifecycle::sync_game(&cfg, &g, SnapshotReason::Periodic, false) {
@@ -422,6 +444,7 @@ impl Daemon {
                 let Ok((cfg, g)) = self.game(&game) else {
                     return;
                 };
+                crate::activity::record("fechado", Some(&game), format!("{} fechou", g.title()));
                 let _w = self.work.lock().expect("lock");
                 match lifecycle::after_exit(&cfg, &g, started) {
                     Ok(m) => m.iter().for_each(|m| log(m)),
@@ -462,6 +485,11 @@ impl Daemon {
                     continue;
                 }
                 log(&r.message);
+                crate::activity::record(
+                    if r.ok { "nuvem" } else { "erro" },
+                    None,
+                    r.message.clone(),
+                );
                 if r.auth {
                     let mut w = warned.lock().expect("lock");
                     if w.get(&r.name)
@@ -524,12 +552,22 @@ impl Daemon {
     }
 }
 
-/// Roda o daemon até receber `Stop`.
+/// Roda o daemon até receber `Stop` (o processo termina).
 pub fn run() -> Result<(), String> {
+    let cfg = Config::load()?;
+    let d = spawn(cfg)?;
+    d.standalone.store(true, Ordering::SeqCst);
+    loop {
+        std::thread::park();
+    }
+}
+
+/// Sobe o daemon em segundo plano neste processo: socket, sincronização direta e o laço. Usado
+/// pelo `relicario daemon` e pela interface quando não há daemon rodando.
+pub fn spawn(cfg: Config) -> Result<Arc<Daemon>, String> {
     if ipc::is_up() {
         return Err("o daemon já está rodando".into());
     }
-    let cfg = Config::load()?;
     let timing = Timing::from_env(&cfg);
     let d = Daemon::new(cfg)?;
     let listener = ipc::listen()
@@ -543,6 +581,9 @@ pub fn run() -> Result<(), String> {
         let d = d.clone();
         std::thread::spawn(move || {
             for conn in listener.incoming() {
+                if d.stopped.load(Ordering::SeqCst) {
+                    break;
+                }
                 match conn {
                     Ok(c) => {
                         let d = d.clone();
@@ -558,54 +599,72 @@ pub fn run() -> Result<(), String> {
     if let Err(e) = d.start_p2p() {
         log(&format!("sincronização direta desligada: {e}"));
     }
-    let mut last_periodic = Instant::now();
-    let mut last_rescan = Instant::now();
-    let mut last_p2p = Instant::now();
-    let mut last_cloud = Instant::now();
-    let (m, _) = d.sync_peers(Duration::from_secs(3));
-    m.iter().for_each(|m| log(m));
-    // Conferência inicial: traz o que outra máquina fez enquanto esta estava desligada.
-    d.tick();
-    if let Ok(m) = d.sync(None) {
+    let dd = d.clone();
+    std::thread::spawn(move || dd.main_loop(timing));
+    Ok(d)
+}
+
+impl Daemon {
+    fn main_loop(&self, timing: Timing) {
+        let d = self;
+        let mut last_periodic = Instant::now();
+        let mut last_rescan = Instant::now();
+        let mut last_p2p = Instant::now();
+        let mut last_cloud = Instant::now();
+        let (m, _) = d.sync_peers(Duration::from_secs(3));
         m.iter().for_each(|m| log(m));
-    }
-    loop {
-        std::thread::sleep(timing.poll);
+        // Conferência inicial: traz o que outra máquina fez enquanto esta estava desligada.
         d.tick();
-        if last_rescan.elapsed() >= timing.rescan {
-            last_rescan = Instant::now();
-            if let Err(e) = d.reload(true) {
-                log(&format!("reescaneamento falhou: {e}"));
+        if let Ok(m) = d.sync(None) {
+            m.iter().for_each(|m| log(m));
+        }
+        while !d.stopped.load(Ordering::SeqCst) {
+            std::thread::sleep(timing.poll);
+            d.tick();
+            if last_rescan.elapsed() >= timing.rescan {
+                last_rescan = Instant::now();
+                if let Err(e) = d.reload(true) {
+                    log(&format!("reescaneamento falhou: {e}"));
+                }
+            }
+            if last_p2p.elapsed() >= timing.p2p {
+                last_p2p = Instant::now();
+                let (m, changed) = d.sync_peers(Duration::from_secs(3));
+                if changed {
+                    m.iter().for_each(|m| log(m));
+                    d.remote_changed.store(true, Ordering::SeqCst);
+                }
+            }
+            if d.remote_changed.swap(false, Ordering::SeqCst) {
+                match d.sync(None) {
+                    Ok(m) => m.iter().for_each(|m| log(m)),
+                    Err(e) => log(&format!("conferência falhou: {e}")),
+                }
+            }
+            if d.cloud_dirty.load(Ordering::SeqCst) || last_cloud.elapsed() >= timing.cloud {
+                if last_cloud.elapsed() >= timing.cloud {
+                    last_cloud = Instant::now();
+                }
+                d.sync_clouds_bg(false);
+            }
+            if last_periodic.elapsed() >= timing.periodic {
+                last_periodic = Instant::now();
+                let _ = d.reload(false);
+                match d.sync(None) {
+                    Ok(m) => m.iter().for_each(|m| log(m)),
+                    Err(e) => log(&format!("conferência periódica falhou: {e}")),
+                }
             }
         }
-        if last_p2p.elapsed() >= timing.p2p {
-            last_p2p = Instant::now();
-            let (m, changed) = d.sync_peers(Duration::from_secs(3));
-            if changed {
-                m.iter().for_each(|m| log(m));
-                d.remote_changed.store(true, Ordering::SeqCst);
-            }
-        }
-        if d.remote_changed.swap(false, Ordering::SeqCst) {
-            match d.sync(None) {
-                Ok(m) => m.iter().for_each(|m| log(m)),
-                Err(e) => log(&format!("conferência falhou: {e}")),
-            }
-        }
-        if d.cloud_dirty.load(Ordering::SeqCst) || last_cloud.elapsed() >= timing.cloud {
-            if last_cloud.elapsed() >= timing.cloud {
-                last_cloud = Instant::now();
-            }
-            d.sync_clouds_bg(false);
-        }
-        if last_periodic.elapsed() >= timing.periodic {
-            last_periodic = Instant::now();
-            let _ = d.reload(false);
-            match d.sync(None) {
-                Ok(m) => m.iter().for_each(|m| log(m)),
-                Err(e) => log(&format!("conferência periódica falhou: {e}")),
-            }
-        }
+        log("laço parado");
+    }
+
+    /// Para o laço (no daemon dentro da interface; o `relicario daemon` sai do processo).
+    pub fn stop(&self) {
+        self.stopped.store(true, Ordering::SeqCst);
+        *self.p2p.lock().expect("lock") = None;
+        // Acorda o `incoming()` para ele ver o pedido de parar.
+        let _ = ipc::request(&Request::Status);
     }
 }
 

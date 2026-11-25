@@ -37,10 +37,44 @@ pub struct Config {
     /// Cópias na nuvem (S3, WebDAV, Google Drive).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub clouds: Vec<CloudConfig>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub retention: Option<Retention>,
+}
+
+/// Quanto tempo guardar o histórico, em dias: tudo, um por dia, um por mês. Fixados, heads e
+/// pontas de outras máquinas nunca são liberados.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Retention {
+    pub all_days: u32,
+    pub daily_days: u32,
+    pub monthly_days: u32,
+}
+
+impl Default for Retention {
+    fn default() -> Self {
+        Retention {
+            all_days: 1,
+            daily_days: 30,
+            monthly_days: 365,
+        }
+    }
+}
+
+impl Retention {
+    pub fn policy(self) -> relicario_engine::retention::Policy {
+        let d = 24 * 3_600_000i64;
+        let all = self.all_days.max(1) as i64 * d;
+        let daily = (self.daily_days as i64 * d).max(all);
+        relicario_engine::retention::Policy {
+            keep_all: all,
+            daily,
+            monthly: (self.monthly_days as i64 * d).max(daily),
+        }
+    }
 }
 
 /// Uma cópia do repositório na nuvem.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CloudConfig {
     /// Nome curto escolhido pelo usuário (`drive`, `r2`…).
     pub name: String,
@@ -54,6 +88,28 @@ pub struct CloudConfig {
 }
 
 impl Config {
+    /// Configuração nova para esta máquina.
+    pub fn new(name: &str, repo: PathBuf) -> Self {
+        Config {
+            machine_id: new_machine_id(name),
+            machine_name: name.to_string(),
+            repo,
+            games: vec![],
+            auto_detect: true,
+            rules: vec![],
+            steamgriddb_key: None,
+            periodic_secs: None,
+            peers: vec![],
+            p2p_port: None,
+            clouds: vec![],
+            retention: None,
+        }
+    }
+
+    pub fn policy(&self) -> relicario_engine::retention::Policy {
+        self.retention.unwrap_or_default().policy()
+    }
+
     pub fn repo_path(&self) -> PathBuf {
         relicario_platform::expand_home(&self.repo.to_string_lossy())
     }
@@ -176,7 +232,7 @@ impl GameConfig {
     }
 }
 
-fn write_atomic(p: &Path, data: &[u8]) -> Result<(), String> {
+pub(crate) fn write_atomic(p: &Path, data: &[u8]) -> Result<(), String> {
     let dir = p.parent().expect("config tem pasta");
     std::fs::create_dir_all(dir).map_err(|e| format!("{}: {e}", dir.display()))?;
     let tmp = dir.join(".config.toml.tmp");

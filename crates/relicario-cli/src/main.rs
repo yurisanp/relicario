@@ -105,6 +105,9 @@ enum Cmd {
     },
     /// Mostra informações do ambiente
     Doctor,
+    /// Pedido da interface em JSON (para testes e depuração)
+    #[command(hide = true)]
+    Api { json: String },
     /// Abre um jogo sincronizando antes e depois (use nas opções de inicialização da loja)
     Run {
         /// Id do jogo (sem isso, descobre pela Steam ou pelo executável)
@@ -280,6 +283,13 @@ fn run(cmd: Cmd) -> R<ExitCode> {
         Cmd::Init { repo, name } => cmd_init(repo, name),
         Cmd::Game(g) => cmd_game(g),
         Cmd::Doctor => cmd_doctor(),
+        Cmd::Api { json } => {
+            let c: relicario_daemon::api::Call =
+                serde_json::from_str(&json).map_err(|e| format!("pedido inválido: {e}"))?;
+            let v = relicario_daemon::api::call(c)?;
+            println!("{v:#}");
+            Ok(ExitCode::SUCCESS)
+        }
         Cmd::Scan { json, offline } => cmd_scan(json, offline),
         Cmd::Manifest(ManifestCmd::Update { force }) => {
             let cache = relicario_catalog::manifest::Cache::default_dir();
@@ -382,6 +392,7 @@ fn run(cmd: Cmd) -> R<ExitCode> {
                 Cmd::Init { .. }
                 | Cmd::Game(_)
                 | Cmd::Doctor
+                | Cmd::Api { .. }
                 | Cmd::Scan { .. }
                 | Cmd::Manifest(_)
                 | Cmd::Art { .. }
@@ -439,19 +450,7 @@ fn cmd_init(repo: String, name: Option<String>) -> R<ExitCode> {
         Ok(c) => c,
         Err(_) => {
             let n = name.clone().unwrap_or_else(relicario_platform::hostname);
-            Config {
-                machine_id: config::new_machine_id(&n),
-                machine_name: n,
-                repo: path.clone(),
-                games: vec![],
-                auto_detect: true,
-                rules: vec![],
-                steamgriddb_key: None,
-                periodic_secs: None,
-                peers: vec![],
-                p2p_port: None,
-                clouds: vec![],
-            }
+            Config::new(&n, path.clone())
         }
     };
     cfg.repo = path;
@@ -898,7 +897,8 @@ fn cmd_verify(l: &Local<'_>, read_data: bool) -> R<ExitCode> {
 
 fn cmd_prune(l: &mut Local<'_>) -> R<ExitCode> {
     let now = relicario_store::time::now();
-    let forgot = ops::apply_retention(l, Default::default(), now).map_err(s)?;
+    let policy = Config::load().map(|c| c.policy()).unwrap_or_default();
+    let forgot = ops::apply_retention(l, policy, now).map_err(s)?;
     let m = l.machine.clone();
     let r = prune::prune(l.repo, &m).map_err(s)?;
     println!(
@@ -1023,7 +1023,7 @@ fn cmd_scan(json: bool, offline: bool) -> R<ExitCode> {
 }
 
 fn cmd_art(game: String, kind: String, set: Option<String>, refresh: bool) -> R<ExitCode> {
-    use relicario_catalog::art::{ArtCache, ArtKind, ArtQuery};
+    use relicario_catalog::art::ArtKind;
     let cfg = Config::load()?;
     let g = games::find(&cfg, &game)?;
     let kind = match kind.as_str() {
@@ -1037,27 +1037,8 @@ fn cmd_art(game: String, kind: String, set: Option<String>, refresh: bool) -> R<
             ));
         }
     };
-    let home = relicario_platform::home_dir().unwrap_or_default();
-    let mut cache = ArtCache::new(ArtCache::default_dir());
-    cache.steam_roots = relicario_catalog::stores::discover(&home).steam_roots;
-    cache.lutris_dirs = vec![home.join(".local/share/lutris")];
-    cache.steamgriddb_key = cfg.steamgriddb_key.clone();
-    let d = g.detected.as_ref();
-    let q = ArtQuery {
-        id: g.id().to_string(),
-        title: g.title().to_string(),
-        steam_appid: d
-            .filter(|d| d.store.as_deref() == Some("steam"))
-            .and_then(|d| d.store_id.as_ref())
-            .and_then(|i| i.parse().ok()),
-        gog_id: d
-            .filter(|d| d.store.as_deref() == Some("gog"))
-            .and_then(|d| d.store_id.as_ref())
-            .and_then(|i| i.parse().ok()),
-        lutris_slug: d
-            .filter(|d| d.launcher.as_deref() == Some("lutris"))
-            .and_then(|d| d.store_id.clone()),
-    };
+    let cache = games::art_cache(&cfg);
+    let q = g.art_query();
     if refresh {
         cache.clear(&q.id, kind);
     }

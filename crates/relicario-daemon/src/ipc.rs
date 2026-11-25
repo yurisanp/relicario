@@ -36,6 +36,10 @@ pub enum Request {
     PairCancel,
     /// Replica agora com as máquinas pareadas.
     PeersSync,
+    /// Pedido da interface (veja [`crate::api::Call`]).
+    Api {
+        call: crate::api::Call,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -53,6 +57,10 @@ pub enum Response {
     },
     Error {
         message: String,
+    },
+    /// Resposta de [`Request::Api`].
+    Api {
+        value: serde_json::Value,
     },
 }
 

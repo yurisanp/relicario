@@ -69,7 +69,35 @@ nomeado no Windows, arquivo em `/tmp` no macOS) cujo nome depende da pasta de da
 {"op":"stop"}
 ```
 
-A interface da fase 6 usa a mesma API.
+A interface usa o mesmo socket com `{"op":"api","call":{...}}`, que responde
+`{"kind":"api","value":...}`. Os pedidos estão em `crates/relicario-daemon/src/api.rs`
+(`Call`): `overview`, `game`, `snapshot`, `activity`, `devices`, `settings`, `restore`, `pin`,
+`unpin`, `resolve`, `set_mode`, `set_ignored`, `save_settings`, `art`, `art_choices`, `art_set`,
+`art_reset`, `export_zip`, `pair_join`, `peer_remove`, `cloud_add`, `cloud_remove`, `cloud_sync`,
+`cloud_check` e `prune`. Para testar à mão:
+
+```sh
+relicario api '{"call":"overview"}'
+relicario api '{"call":"game","id":"hookshot"}'
+```
+
+Sem daemon rodando, o `relicario api` atende no próprio processo. A interface faz o mesmo,
+mas sobe o daemon inteiro dentro dela (laço, sincronização direta e socket) quando não há
+outro rodando.
+
+## Conflitos
+
+`resolve` fica com uma das pontas: grava um snapshot de merge (pais: a escolhida e as outras),
+restaura o conteúdo dela (o que estava no disco vira cópia de segurança, se ainda não estiver
+guardado) e faz do merge o head desta máquina. As outras máquinas veem o merge descendendo do
+que elas têm e só avançam, sem conflito. Com `keep_both`, as outras versões ficam fixadas com
+o nome da máquina ("versão de Notebook"), para a retenção não apagá-las.
+
+## Atividade
+
+Cada máquina guarda as últimas 1000 entradas em `atividade.jsonl` na pasta de dados: snapshot
+guardado, restaurado, conflito, save suspeito, jogo aberto e fechado, nuvem, pares e
+pareamento. Resultados repetidos (o mesmo conflito a cada conferência) entram uma vez só.
 
 ## Variáveis para testes
 
