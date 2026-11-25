@@ -75,6 +75,10 @@ jobs:
           test -x squashfs-root/usr/bin/relicario-app
           test -x squashfs-root/usr/bin/relicario
           test -x squashfs-root/usr/bin/relicario-restore
+          # A bandeja carrega a appindicator em tempo de execução. Sem ela no pacote, o app usa a
+          # do sistema, compilada contra uma glib mais nova que a embutida, e morre ao abrir.
+          ls squashfs-root/usr/lib | grep -E '^libayatana-appindicator3\.so'
+          ls squashfs-root/usr/lib | grep -E '^libdbusmenu-glib\.so'
           squashfs-root/usr/bin/relicario --version
           squashfs-root/usr/bin/relicario-restore --version
       - uses: actions/upload-artifact@v4
