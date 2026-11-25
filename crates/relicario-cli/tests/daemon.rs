@@ -1,4 +1,5 @@
 //! M2 "Funciona sozinho": `relicario run` e o daemon vigiando um jogo de mentira.
+#![cfg_attr(not(target_os = "linux"), allow(dead_code))]
 
 use std::fs;
 use std::path::Path;
