@@ -1,0 +1,27 @@
+[package]
+name = "relicario-restore"
+description = "Recupera saves de um repositório do Relicário sem o daemon, só lendo"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+publish.workspace = true
+
+[[bin]]
+name = "relicario-restore"
+path = "src/main.rs"
+
+[dependencies]
+relicario-model.workspace = true
+relicario-store.workspace = true
+relicario-transport.workspace = true
+clap.workspace = true
+rpassword.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
+
+[lints]
+workspace = true

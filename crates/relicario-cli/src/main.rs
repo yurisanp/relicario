@@ -934,6 +934,17 @@ fn cmd_doctor(report: bool, saida: Option<PathBuf>) -> R<ExitCode> {
     }
     o!("relicario {}", env!("CARGO_PKG_VERSION"));
     o!("sistema: {}", relicario_platform::Os::atual().nome());
+    let deck = relicario_platform::deck::detect();
+    if deck.steamos {
+        o!(
+            "SteamOS: sim ({})",
+            if deck.game_mode {
+                "modo Jogo"
+            } else {
+                "modo Desktop"
+            }
+        );
+    }
     o!("configuração: {}", config::path().display());
     match Config::load() {
         Ok(cfg) => {

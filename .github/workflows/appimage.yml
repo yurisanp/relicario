@@ -1,0 +1,85 @@
+name: AppImage
+
+# Gera o AppImage (app + `relicario` + `relicario-restore`) e um .tar.gz só com a linha de
+# comando. Roda na main, em tags `v*` e à mão. Numa tag, cria um rascunho de release com os
+# arquivos: publicar o release fica com quem cuida do projeto.
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+    paths:
+      - ".github/workflows/appimage.yml"
+      - "crates/relicario-ui/**"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: appimage-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  appimage:
+    name: AppImage (x86_64)
+    # A versão mais antiga com WebKitGTK 4.1: o AppImage roda em sistemas com glibc 2.35 ou mais nova.
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Dependências
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev libxdo-dev libssl-dev file
+      - name: Linha de comando
+        run: |
+          cargo build --release --locked -p relicario-cli -p relicario-restore
+          mkdir -p crates/relicario-ui/binaries
+          triple=$(rustc -vV | sed -n 's/^host: //p')
+          cp target/release/relicario "crates/relicario-ui/binaries/relicario-$triple"
+          cp target/release/relicario-restore "crates/relicario-ui/binaries/relicario-restore-$triple"
+      - name: AppImage
+        working-directory: crates/relicario-ui
+        env:
+          APPIMAGE_EXTRACT_AND_RUN: "1"
+          NO_STRIP: "true"
+        run: >
+          npx --yes @tauri-apps/cli@2.12.6 build --bundles appimage
+          --config '{"bundle":{"externalBin":["binaries/relicario","binaries/relicario-restore"]}}'
+      - name: Junta os arquivos
+        run: |
+          version=$(cargo metadata --no-deps --format-version 1 | python3 -c 'import json,sys; print([p["version"] for p in json.load(sys.stdin)["packages"] if p["name"]=="relicario-cli"][0])')
+          mkdir -p dist
+          cp target/release/bundle/appimage/*.AppImage "dist/Relicario-$version-x86_64.AppImage"
+          tar -C target/release -czf "dist/relicario-cli-$version-linux-x86_64.tar.gz" relicario relicario-restore
+          (cd dist && sha256sum * > SHA256SUMS)
+          ls -l dist
+      - name: Confere o AppImage
+        run: |
+          app=$(ls dist/*.AppImage)
+          chmod +x "$app"
+          "$app" --appimage-extract > /dev/null
+          test -x squashfs-root/usr/bin/relicario-app
+          test -x squashfs-root/usr/bin/relicario
+          test -x squashfs-root/usr/bin/relicario-restore
+          squashfs-root/usr/bin/relicario --version
+          squashfs-root/usr/bin/relicario-restore --version
+      - uses: actions/upload-artifact@v4
+        with:
+          name: relicario-linux-x86_64
+          path: dist/*
+          if-no-files-found: error
+      - name: Rascunho de release
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" dist/* --draft --title "$GITHUB_REF_NAME" --notes "Rascunho gerado pelo CI."

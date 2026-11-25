@@ -7,6 +7,7 @@
 //!
 //! Segredos (chaveiro do sistema) chegam na fase 5.
 
+pub mod deck;
 pub mod notify;
 pub mod secrets;
 pub mod service;

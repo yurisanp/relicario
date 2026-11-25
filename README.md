@@ -29,10 +29,11 @@ Plataformas da 1.0: Linux (incluindo Steam Deck), Windows e macOS.
 | [`relicario-platform`](crates/relicario-platform) | Caminhos, serviço, segredos e notificações por sistema |
 | [`relicario-daemon`](crates/relicario-daemon) | Serviço que orquestra tudo e expõe a API local |
 | [`relicario-cli`](crates/relicario-cli) | Linha de comando `relicario` |
-| [`relicario-ui`](crates/relicario-ui) | Interface em Tauri 2 (a partir da fase 6) |
+| [`relicario-ui`](crates/relicario-ui) | App com janela e bandeja (Tauri 2) |
+| [`relicario-restore`](crates/relicario-restore) | Recupera saves de um repositório sem o daemon, só lendo |
 | [`relicario-plugins`](crates/relicario-plugins) | Leitores de save específicos de jogos |
 
-Documentação em [`docs/`](docs): [roadmap](docs/roadmap.md), [conectores de armazenamento](docs/conectores.md), [decisões de arquitetura](docs/adr), [formato do repositório](docs/format.md), [catálogo de jogos](docs/catalogo.md), [daemon](docs/daemon.md), [sincronização direta](docs/p2p.md), [nuvem](docs/nuvem.md), [interface](docs/interface.md), [robustez](docs/robustez.md) e o [protótipo da interface](docs/design/prototipo.html).
+Documentação em [`docs/`](docs): [roadmap](docs/roadmap.md), [conectores de armazenamento](docs/conectores.md), [decisões de arquitetura](docs/adr), [formato do repositório](docs/format.md), [catálogo de jogos](docs/catalogo.md), [daemon](docs/daemon.md), [sincronização direta](docs/p2p.md), [nuvem](docs/nuvem.md), [interface](docs/interface.md), [robustez](docs/robustez.md), [guia do usuário](docs/guia.md) e o [protótipo da interface](docs/design/prototipo.html).
 
 ## Compilar
 
