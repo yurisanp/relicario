@@ -201,8 +201,8 @@ pub(crate) mod tests {
             root.join("steamapps/libraryfolders.vdf"),
             format!(
                 "\"libraryfolders\"\n{{\n \"0\" {{ \"path\" \"{}\" }}\n \"1\" {{ \"path\" \"{}\" }}\n}}\n",
-                root.display(),
-                lib2.display()
+                vdf_path(&root),
+                vdf_path(&lib2)
             ),
         )
         .unwrap();
@@ -226,6 +226,11 @@ pub(crate) mod tests {
         )
         .unwrap();
         root
+    }
+
+    /// A Steam grava caminhos com as barras invertidas escapadas (`D:\\\\Jogos`).
+    fn vdf_path(p: &Path) -> String {
+        p.display().to_string().replace('\\', "\\\\")
     }
 
     #[test]
