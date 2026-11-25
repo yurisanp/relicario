@@ -17,6 +17,8 @@ pub enum Error {
     AlreadyExists,
     #[error("formato do repositório {0} não é suportado por esta versão")]
     UnsupportedVersion(u32),
+    #[error("senha ou chave de recuperação errada")]
+    WrongPassword,
     #[error("dado corrompido: {0}")]
     Corrupt(String),
     #[error("bloco {0} não encontrado no repositório")]

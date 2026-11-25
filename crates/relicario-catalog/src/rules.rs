@@ -15,6 +15,20 @@ pub struct Rule {
     /// Pastas extras.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub roots: Vec<ExtraRoot>,
+    /// Como sincronizar. Sem valor: só histórico quando o jogo já tem Steam Cloud, completo nos
+    /// outros.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mode: Option<SyncMode>,
+}
+
+/// Modo de sincronização de um jogo.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SyncMode {
+    /// Guarda e traz saves entre máquinas.
+    Completo,
+    /// Só guarda o histórico; quem leva o save entre máquinas é a nuvem da loja.
+    Historico,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]

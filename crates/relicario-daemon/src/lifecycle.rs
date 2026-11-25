@@ -14,6 +14,10 @@ use std::time::Duration;
 #[serde(rename_all = "snake_case", tag = "kind")]
 pub enum SyncOutcome {
     EmDia,
+    /// Jogo em modo só histórico: outra máquina tem save mais novo, mas quem traz é a loja.
+    SoHistorico {
+        from: String,
+    },
     /// Snapshot novo desta máquina.
     Guardado {
         snapshot: String,
@@ -64,6 +68,9 @@ impl SyncOutcome {
                 format!(
                     "{title}: {from} tem um save mais novo, mas o jogo está aberto aqui; nada foi restaurado"
                 )
+            }
+            SyncOutcome::SoHistorico { from } => {
+                format!("{title}: só histórico (a nuvem da loja traz o save de {from})")
             }
             SyncOutcome::Conflito { tips } => {
                 let t: Vec<String> = tips.iter().map(|(m, s)| format!("{m} ({s})")).collect();
@@ -138,6 +145,15 @@ pub fn sync_game(
             ops::adopt(&mut l, &spec.id, to).map_err(|e| e.to_string())?;
             SyncOutcome::EmDia
         }
+        Action::Avancar { from, .. } if game.history_only(cfg) => SyncOutcome::SoHistorico {
+            from: machine_name(&l, &from),
+        },
+        Action::Conflito { .. } if game.history_only(cfg) => match saved {
+            Some(id) => SyncOutcome::Guardado {
+                snapshot: id.short(),
+            },
+            None => SyncOutcome::EmDia,
+        },
         Action::Avancar { to, from } => {
             let from = machine_name(&l, &from);
             if !allow_restore {

@@ -149,6 +149,35 @@ fn write_snapshot(
     l.repo.put_snapshot(&s)
 }
 
+/// Grava um snapshot importado de outro programa. Não mexe no head: o que foi importado vira
+/// histórico, e nunca é levado sozinho para outras máquinas.
+pub fn import_snapshot(
+    l: &mut Local<'_>,
+    game: &GameId,
+    tree: &Tree,
+    parents: Vec<SnapshotId>,
+    created_at: i64,
+    meta: BTreeMap<String, String>,
+) -> Result<SnapshotId> {
+    let _lock = l.repo.lock(&l.machine, crate::lock::LockMode::Shared)?;
+    let tree_id = l.repo.put_tree(tree)?;
+    let s = Snapshot {
+        game: game.clone(),
+        machine: l.machine.clone(),
+        parents,
+        tree: tree_id,
+        content: tree.content_hash(),
+        created_at,
+        mtime_max: tree.files.iter().map(|f| f.mtime).max().unwrap_or(0),
+        size: tree.total_size(),
+        files: tree.files.len() as u64,
+        reason: SnapshotReason::Import,
+        suspicions: vec![],
+        meta,
+    };
+    l.repo.put_snapshot(&s)
+}
+
 /// Snapshots de um jogo, em ordem de criação.
 pub fn game_snapshots(repo: &Repository, game: &GameId) -> Result<Vec<(SnapshotId, Snapshot)>> {
     let mut v: Vec<_> = repo

@@ -235,6 +235,27 @@ pub fn store_files(repo: &mut Repository, sources: &[Source]) -> Result<Tree> {
     Ok(Tree::new(files))
 }
 
+/// Guarda arquivos soltos: (raiz, caminho relativo, arquivo no disco). Usado pela importação.
+pub fn store_entries(repo: &mut Repository, entries: &[(String, String, PathBuf)]) -> Result<Tree> {
+    let c = repo.config().chunker;
+    let params = (c.min, c.avg, c.max);
+    let mut files = Vec::new();
+    for (root, rel, path) in entries {
+        let mut cb = |data: &[u8]| repo.put_blob(data);
+        let i = read_file(path, Some(&mut cb), params)?;
+        files.push(FileEntry {
+            root: root.clone(),
+            path: rel.clone(),
+            size: i.size,
+            mtime: i.mtime,
+            hash: i.hash,
+            kind: i.kind,
+            chunks: i.chunks,
+        });
+    }
+    Ok(Tree::new(files))
+}
+
 /// O que uma restauração fez.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct RestoreReport {

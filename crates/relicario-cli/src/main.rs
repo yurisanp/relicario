@@ -1,5 +1,6 @@
 //! `relicario`: linha de comando.
 
+mod nuvem;
 mod pares;
 mod servico;
 
@@ -145,6 +146,31 @@ enum Cmd {
     /// Máquinas pareadas
     #[command(subcommand)]
     Peers(pares::PeersCmd),
+    /// Cópias na nuvem (Google Drive, S3, WebDAV), cifradas
+    #[command(subcommand)]
+    Cloud(nuvem::CloudCmd),
+    /// Importa de outro programa
+    #[command(subcommand)]
+    Import(ImportCmd),
+}
+
+#[derive(Subcommand)]
+enum ImportCmd {
+    /// Backups e jogos personalizados do Ludusavi
+    Ludusavi {
+        /// Pasta de backups (padrão: a da configuração do Ludusavi)
+        #[arg(long)]
+        backups: Option<String>,
+        /// `config.yaml` do Ludusavi
+        #[arg(long)]
+        config: Option<String>,
+        /// Só jogos com este texto no nome
+        #[arg(long)]
+        game: Option<String>,
+        /// Não cadastrar os jogos personalizados
+        #[arg(long)]
+        sem_personalizados: bool,
+    },
 }
 
 #[derive(Subcommand)]
@@ -189,6 +215,8 @@ enum GameCmd {
     Unignore { id: String },
     /// Ignora arquivos de um jogo (padrão relativo à pasta de save, por exemplo `backup/**`)
     Exclude { id: String, pattern: String },
+    /// Modo de sincronização: `auto` (só histórico com Steam Cloud), `completo` ou `historico`
+    Mode { id: String, mode: String },
 }
 
 fn main() -> ExitCode {
@@ -289,6 +317,13 @@ fn run(cmd: Cmd) -> R<ExitCode> {
             pares::cmd_pair((!code.is_empty()).then_some(code), addr, wait)
         }
         Cmd::Peers(c) => pares::cmd_peers(c),
+        Cmd::Cloud(c) => nuvem::cmd_cloud(c),
+        Cmd::Import(ImportCmd::Ludusavi {
+            backups,
+            config,
+            game,
+            sem_personalizados,
+        }) => nuvem::cmd_import_ludusavi(backups, config, game, sem_personalizados),
         other => {
             let cfg = Config::load()?;
             if matches!(other, Cmd::Sync { .. } | Cmd::Plan { .. }) && !cfg.peers.is_empty() {
@@ -307,13 +342,21 @@ fn run(cmd: Cmd) -> R<ExitCode> {
                 };
                 msgs.iter().for_each(|m| eprintln!("{m}"));
             }
+            if matches!(other, Cmd::Sync { .. } | Cmd::Plan { .. })
+                && !relicario_daemon::ipc::is_up()
+            {
+                for r in relicario_daemon::cloud::sync_all(&cfg) {
+                    eprintln!("{}", r.message);
+                }
+            }
             let mut repo = open_repo(&cfg)?;
             let mut l = Local {
                 repo: &mut repo,
                 machine: cfg.machine(),
                 machine_name: cfg.machine_name.clone(),
             };
-            match other {
+            let was_sync = matches!(other, Cmd::Sync { .. });
+            let r = match other {
                 Cmd::Snapshot { games, force } => cmd_snapshot(&cfg, &mut l, &games, force),
                 Cmd::Plan { games } => cmd_plan(&cfg, &l, &games),
                 Cmd::Sync { games } => cmd_sync(&cfg, &mut l, &games),
@@ -349,10 +392,33 @@ fn run(cmd: Cmd) -> R<ExitCode> {
                 | Cmd::Associate { .. }
                 | Cmd::Apps(_)
                 | Cmd::Pair { .. }
-                | Cmd::Peers(_) => {
+                | Cmd::Peers(_)
+                | Cmd::Cloud(_)
+                | Cmd::Import(_) => {
                     unreachable!()
                 }
+            };
+            drop(l);
+            drop(repo);
+            if was_sync && r.is_ok() {
+                // Envia o que esta máquina acabou de guardar.
+                if relicario_daemon::ipc::is_up() {
+                    let _ =
+                        relicario_daemon::ipc::request(&relicario_daemon::ipc::Request::PeersSync);
+                } else {
+                    for p in relicario_daemon::p2p::sync_peers(
+                        &cfg,
+                        &[],
+                        std::time::Duration::from_secs(3),
+                    ) {
+                        eprintln!("{}", p.message);
+                    }
+                    for c in relicario_daemon::cloud::sync_all(&cfg) {
+                        eprintln!("{}", c.message);
+                    }
+                }
             }
+            r
         }
     }
 }
@@ -384,6 +450,7 @@ fn cmd_init(repo: String, name: Option<String>) -> R<ExitCode> {
                 periodic_secs: None,
                 peers: vec![],
                 p2p_port: None,
+                clouds: vec![],
             }
         }
     };
@@ -490,6 +557,25 @@ fn cmd_game(g: GameCmd) -> R<ExitCode> {
             cfg.save()?;
             games::rescan(&cfg, false, true)?;
             println!("{id} ignorado");
+        }
+        GameCmd::Mode { id, mode } => {
+            use relicario_catalog::rules::{Rule, SyncMode};
+            let m = match mode.as_str() {
+                "auto" => None,
+                "completo" | "full" => Some(SyncMode::Completo),
+                "historico" | "histórico" | "history" => Some(SyncMode::Historico),
+                _ => return Err("modo: auto, completo ou historico".into()),
+            };
+            match cfg.rules.iter_mut().find(|r| r.game == id) {
+                Some(r) => r.mode = m,
+                None => cfg.rules.push(Rule {
+                    game: id.clone(),
+                    mode: m,
+                    ..Default::default()
+                }),
+            }
+            cfg.save()?;
+            println!("{id}: modo {mode}");
         }
         GameCmd::Unignore { id } => {
             cfg.rules.retain(|r| !(r.game == id && r.ignore));
@@ -833,6 +919,19 @@ fn cmd_doctor() -> R<ExitCode> {
         Ok(cfg) => {
             println!("máquina: {} ({})", cfg.machine_name, cfg.machine_id);
             println!("repositório: {}", cfg.repo.display());
+            println!(
+                "sincronização direta: {} ({} máquinas pareadas)",
+                cfg.port()
+                    .map(|p| format!("porta UDP {p}"))
+                    .unwrap_or_else(|| "desligada".into()),
+                cfg.peers.len()
+            );
+            for c in &cfg.clouds {
+                println!("nuvem {}: {}", c.name, relicario_daemon::cloud::describe(c));
+            }
+            if !cfg.clouds.is_empty() {
+                println!("segredos: {}", relicario_platform::secrets::backend());
+            }
             match open_repo(&cfg) {
                 Ok(r) => println!(
                     "repositório abre: sim (formato v{})",

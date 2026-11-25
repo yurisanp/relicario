@@ -5,7 +5,7 @@ members = ["crates/*"]
 [workspace.package]
 version = "0.0.1"
 edition = "2024"
-rust-version = "1.88"
+rust-version = "1.91"
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/yurisanp/relicario"
 authors = ["Os autores do Relicário"]
@@ -47,6 +47,16 @@ rcgen = { version = "0.13", default-features = false, features = ["ring", "pem"]
 tokio = { version = "1", features = ["rt-multi-thread", "net", "time", "macros", "io-util", "sync"] }
 spake2 = "0.4"
 mdns-sd = "0.13"
+chacha20poly1305 = "0.10"
+argon2 = "0.5"
+sha2 = "0.10"
+sha1 = "0.10"
+zip = { version = "9.8", default-features = false, features = ["deflate"] }
+rpassword = "7"
+keyring = { version = "3", features = ["apple-native", "windows-native", "async-secret-service", "tokio", "crypto-rust"] }
+reqwest = { version = "0.13", default-features = false, features = ["rustls-no-provider", "http2"] }
+opendal-http-transport-reqwest = { version = "0.59", default-features = false, features = ["rustls-no-provider"] }
+opendal = { version = "0.59", default-features = false, features = ["executors-tokio", "http-transport-reqwest-rustls-no-provider", "layers-retry", "layers-timeout", "services-s3", "services-webdav", "services-gdrive", "services-memory", "services-fs"] }
 
 [workspace.lints.rust]
 unsafe_code = "forbid"
@@ -58,3 +68,17 @@ all = { level = "warn", priority = -1 }
 [profile.release]
 lto = "thin"
 codegen-units = 1
+
+# Criptografia e compressão otimizadas também nos testes (Argon2 em debug é lento demais).
+[profile.dev.package.argon2]
+opt-level = 3
+[profile.dev.package.blake2]
+opt-level = 3
+[profile.dev.package.chacha20]
+opt-level = 3
+[profile.dev.package.poly1305]
+opt-level = 3
+[profile.dev.package.blake3]
+opt-level = 3
+[profile.dev.package.zstd-sys]
+opt-level = 3

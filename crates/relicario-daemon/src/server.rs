@@ -31,6 +31,7 @@ pub struct Timing {
     pub periodic: Duration,
     pub rescan: Duration,
     pub p2p: Duration,
+    pub cloud: Duration,
 }
 
 impl Timing {
@@ -43,6 +44,7 @@ impl Timing {
                 .unwrap_or_else(|| env_ms("RELICARIO_PERIODIC_MS", 3_600_000)),
             rescan: env_ms("RELICARIO_RESCAN_MS", 6 * 3_600_000),
             p2p: env_ms("RELICARIO_P2P_MS", 60_000),
+            cloud: env_ms("RELICARIO_CLOUD_MS", 3_600_000),
         }
     }
 }
@@ -81,6 +83,12 @@ pub struct Daemon {
     p2p: Mutex<Option<P2p>>,
     /// Um par gravou um head novo aqui: vale conferir os jogos.
     remote_changed: Arc<AtomicBool>,
+    /// Há snapshot novo para mandar à nuvem.
+    cloud_dirty: AtomicBool,
+    /// Uma replicação com a nuvem está rodando.
+    cloud_busy: Arc<AtomicBool>,
+    /// Último aviso de login por nuvem (para não repetir toda hora).
+    auth_warned: Arc<Mutex<BTreeMap<String, Instant>>>,
 }
 
 fn log(msg: &str) {
@@ -110,6 +118,9 @@ impl Daemon {
             work: Mutex::new(()),
             p2p: Mutex::new(None),
             remote_changed: Arc::new(AtomicBool::new(false)),
+            cloud_dirty: AtomicBool::new(true),
+            cloud_busy: Arc::new(AtomicBool::new(false)),
+            auth_warned: Arc::new(Mutex::new(BTreeMap::new())),
         }))
     }
 
@@ -264,6 +275,7 @@ impl Daemon {
                 lifecycle::before_launch(&cfg, &g)
             }),
             Request::Exited { game, started_at } => self.game(&game).and_then(|(cfg, g)| {
+                self.cloud_dirty.store(true, Ordering::SeqCst);
                 let r = {
                     let _w = self.work.lock().expect("lock");
                     lifecycle::after_exit(&cfg, &g, Some(started_at))
@@ -398,6 +410,7 @@ impl Daemon {
                 }
             }
             Event::Stopped { game } => {
+                self.cloud_dirty.store(true, Ordering::SeqCst);
                 let started = {
                     let mut i = self.inner.lock().expect("lock");
                     if i.external.contains(&game) {
@@ -416,6 +429,58 @@ impl Daemon {
                 }
             }
         }
+    }
+
+    /// Replica com as nuvens em segundo plano, só sem jogo aberto (a não ser `force`). Avisa
+    /// quando o login expira e, uma vez por semana, confere a cópia inteira.
+    pub fn sync_clouds_bg(&self, force: bool) {
+        let (cfg, running) = {
+            let i = self.inner.lock().expect("lock");
+            (
+                i.cfg.clone(),
+                i.watcher.running().count() + i.external.len(),
+            )
+        };
+        if cfg.clouds.is_empty() || (running > 0 && !force) {
+            return;
+        }
+        if self.cloud_busy.swap(true, Ordering::SeqCst) {
+            return;
+        }
+        self.cloud_dirty.store(false, Ordering::SeqCst);
+        let (busy, warned, changed) = (
+            self.cloud_busy.clone(),
+            self.auth_warned.clone(),
+            self.remote_changed.clone(),
+        );
+        std::thread::spawn(move || {
+            for r in crate::cloud::sync_all(&cfg) {
+                if r.heads_in {
+                    changed.store(true, Ordering::SeqCst);
+                }
+                if r.ok && r.message.ends_with("em dia") {
+                    continue;
+                }
+                log(&r.message);
+                if r.auth {
+                    let mut w = warned.lock().expect("lock");
+                    if w.get(&r.name)
+                        .is_none_or(|t| t.elapsed() > Duration::from_secs(24 * 3600))
+                    {
+                        w.insert(r.name.clone(), Instant::now());
+                        lifecycle::notify(
+                            "Relicário: nuvem desconectada",
+                            &format!(
+                                "Não consegui entrar em {}. Rode `relicario cloud login {}` para entrar de novo.",
+                                r.name, r.name
+                            ),
+                        );
+                    }
+                }
+            }
+            weekly_checks(&cfg);
+            busy.store(false, Ordering::SeqCst);
+        });
     }
 
     /// Executáveis desconhecidos em pastas de jogos: pergunta uma vez.
@@ -496,6 +561,7 @@ pub fn run() -> Result<(), String> {
     let mut last_periodic = Instant::now();
     let mut last_rescan = Instant::now();
     let mut last_p2p = Instant::now();
+    let mut last_cloud = Instant::now();
     let (m, _) = d.sync_peers(Duration::from_secs(3));
     m.iter().for_each(|m| log(m));
     // Conferência inicial: traz o que outra máquina fez enquanto esta estava desligada.
@@ -526,6 +592,12 @@ pub fn run() -> Result<(), String> {
                 Err(e) => log(&format!("conferência falhou: {e}")),
             }
         }
+        if d.cloud_dirty.load(Ordering::SeqCst) || last_cloud.elapsed() >= timing.cloud {
+            if last_cloud.elapsed() >= timing.cloud {
+                last_cloud = Instant::now();
+            }
+            d.sync_clouds_bg(false);
+        }
         if last_periodic.elapsed() >= timing.periodic {
             last_periodic = Instant::now();
             let _ = d.reload(false);
@@ -535,4 +607,37 @@ pub fn run() -> Result<(), String> {
             }
         }
     }
+}
+
+/// Conferência semanal de cada nuvem (baixa, confere e restaura numa pasta temporária).
+fn weekly_checks(cfg: &Config) {
+    let mut st = State::load();
+    let now = relicario_store::time::now();
+    for c in &cfg.clouds {
+        let last = st.cloud_checks.get(&c.name).copied().unwrap_or(0);
+        if now - last < 7 * 24 * 3_600_000 {
+            continue;
+        }
+        match crate::cloud::check(c) {
+            Ok(m) => {
+                log(&format!(
+                    "conferência de {}: ok ({} itens)",
+                    c.name,
+                    m.len()
+                ));
+                st.cloud_checks.insert(c.name.clone(), now);
+            }
+            Err(e) => {
+                log(&format!("conferência de {} falhou: {e}", c.name));
+                lifecycle::notify(
+                    "Relicário: problema na nuvem",
+                    &format!(
+                        "A conferência de {} encontrou um problema. Veja `relicario cloud check {}`.",
+                        c.name, c.name
+                    ),
+                );
+            }
+        }
+    }
+    let _ = st.save();
 }

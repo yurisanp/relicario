@@ -235,7 +235,14 @@ pub fn cmd_run(game: Option<String>, command: Vec<String>) -> R<ExitCode> {
                 Response::Status { .. } => Ok(vec![]),
             })
         } else {
-            lifecycle::after_exit(cfg, g, Some(started_at))
+            lifecycle::after_exit(cfg, g, Some(started_at)).map(|mut m| {
+                m.extend(
+                    relicario_daemon::cloud::sync_all(cfg)
+                        .into_iter()
+                        .map(|c| c.message),
+                );
+                m
+            })
         };
         match r {
             Ok(m) => m.iter().for_each(|m| eprintln!("relicario: {m}")),

@@ -12,6 +12,7 @@
 //! [`Tree`]: relicario_model::Tree
 
 mod config;
+pub mod crypto;
 mod error;
 pub mod files;
 mod lock;

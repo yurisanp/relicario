@@ -34,6 +34,23 @@ pub struct Config {
     /// Porta UDP da sincronização direta (padrão 47321; 0 desliga o servidor).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub p2p_port: Option<u16>,
+    /// Cópias na nuvem (S3, WebDAV, Google Drive).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub clouds: Vec<CloudConfig>,
+}
+
+/// Uma cópia do repositório na nuvem.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CloudConfig {
+    /// Nome curto escolhido pelo usuário (`drive`, `r2`…).
+    pub name: String,
+    pub spec: relicario_transport::CloudSpec,
+    /// Cifrada (padrão). Só destinos que o usuário controla deveriam ficar sem.
+    #[serde(default = "yes")]
+    pub encrypted: bool,
+    /// Limite de envio em KiB/s (padrão: sem limite).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub limit_kbps: Option<u32>,
 }
 
 impl Config {

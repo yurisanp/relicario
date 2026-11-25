@@ -4,12 +4,17 @@
 //! garantias exigidas estão documentadas no trait; a suíte em [`conformance`] confere cada
 //! implementação.
 //!
-//! Disponível: [`LocalFolder`] (pasta local, HD externo, pasta sincronizada). P2p, Google
-//! Drive, WebDAV, S3 e SFTP chegam nas fases 4 e 5.
+//! Disponível: [`LocalFolder`] (pasta local, HD externo, pasta sincronizada) e [`Cloud`] (S3 e
+//! compatíveis, WebDAV/Nextcloud e Google Drive, pelo `opendal`). A sincronização direta entre
+//! máquinas fica no crate `relicario-p2p`.
 
 use std::fmt;
 
+pub mod cloud;
+pub mod limit;
 mod local;
+pub use cloud::{Cloud, CloudSpec};
+pub use limit::Limited;
 pub use local::LocalFolder;
 
 pub mod conformance;
@@ -67,6 +72,9 @@ pub enum Error {
         #[source]
         source: std::io::Error,
     },
+    /// Login expirado, revogado ou sem permissão: precisa do usuário.
+    #[error("acesso negado pelo destino: {0}")]
+    Auth(String),
     #[error("{0}")]
     Other(String),
 }

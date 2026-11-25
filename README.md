@@ -4,7 +4,7 @@
 
 O Relicário guarda cada versão dos saves dos seus jogos, descobre sozinho qual é a mais atual entre várias máquinas e **nunca sobrescreve progresso sem guardar uma cópia antes**. É o Steam Cloud para os jogos que não têm Steam Cloud, com histórico de verdade.
 
-**Estado:** fases 1 a 4 concluídas (M1 "funciona na CLI", detecção automática de jogos, M2 "funciona sozinho" com o daemon e sincronização direta entre máquinas). Ainda é para testes, não para seus saves de verdade; acompanhe o [roadmap](docs/roadmap.md).
+**Estado:** fases 1 a 5 concluídas (M1 "funciona na CLI", detecção automática de jogos, M2 "funciona sozinho" com o daemon, sincronização direta entre máquinas e M3 "cofre externo" com nuvem cifrada). Ainda é para testes, não para seus saves de verdade; acompanhe o [roadmap](docs/roadmap.md).
 
 ## Como vai funcionar
 
@@ -32,11 +32,11 @@ Plataformas da 1.0: Linux (incluindo Steam Deck), Windows e macOS.
 | [`relicario-ui`](crates/relicario-ui) | Interface em Tauri 2 (a partir da fase 6) |
 | [`relicario-plugins`](crates/relicario-plugins) | Leitores de save específicos de jogos |
 
-Documentação em [`docs/`](docs): [roadmap](docs/roadmap.md), [conectores de armazenamento](docs/conectores.md), [decisões de arquitetura](docs/adr), [formato do repositório](docs/format.md), [catálogo de jogos](docs/catalogo.md), [daemon](docs/daemon.md), [sincronização direta](docs/p2p.md) e o [protótipo da interface](docs/design/prototipo.html).
+Documentação em [`docs/`](docs): [roadmap](docs/roadmap.md), [conectores de armazenamento](docs/conectores.md), [decisões de arquitetura](docs/adr), [formato do repositório](docs/format.md), [catálogo de jogos](docs/catalogo.md), [daemon](docs/daemon.md), [sincronização direta](docs/p2p.md), [nuvem](docs/nuvem.md) e o [protótipo da interface](docs/design/prototipo.html).
 
 ## Compilar
 
-Requer Rust estável (1.88 ou mais novo).
+Requer Rust estável (1.91 ou mais novo).
 
 ```sh
 cargo build --workspace
@@ -99,6 +99,16 @@ relicario peers sync
 ```
 
 Detalhes em [docs/p2p.md](docs/p2p.md).
+
+### Na nuvem, cifrado
+
+```sh
+relicario cloud add drive --gdrive        # ou --s3, --webdav, --pasta
+relicario cloud check                     # baixa, confere e restaura numa pasta temporária
+relicario import ludusavi                 # traz os backups do Ludusavi como histórico
+```
+
+Detalhes em [docs/nuvem.md](docs/nuvem.md).
 
 ## Contribuir
 

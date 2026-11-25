@@ -166,6 +166,20 @@ A política padrão (crate `relicario-engine`, módulo `retention`):
 - **Restauração conferida:** cada arquivo é escrito num temporário, conferido pelo hash e só então renomeado; no fim, o disco é relido e comparado com a árvore.
 - **Guarda contra save corrompido:** um snapshot que encolheu mais de 80 %, ficou vazio, tem arquivo que virou só zeros ou mudou de formato é guardado, mas não vira head sem `--force`.
 
-## A definir na fase 5
+## Cópia cifrada (nuvem)
 
-- `encryption: "xchacha20poly1305"`: cada blob, índice, snapshot e heads cifrado individualmente; chave mestra em `keys/` cifrada por Argon2id(senha) e pela chave de recuperação. Veja o [ADR 0004](adr/0004-criptografia.md).
+O repositório de cada máquina fica sem criptografia no disco dela. A cópia na nuvem é cifrada e, vista pelo Relicário através da chave, é um repositório comum: a mesma replicação, verificação e restauração valem para as duas.
+
+No destino:
+
+```
+config               # o mesmo config do repositório, com "encryption": "xchacha20poly1305"
+keys/password        # chave mestra embrulhada por Argon2id(senha)
+keys/recovery        # chave mestra embrulhada pela chave de recuperação
+packs/ index/ snapshots/ heads/   # mesmos nomes, conteúdo cifrado
+```
+
+- Cada arquivo: `RLCENC1\0` + nonce de 24 bytes + XChaCha20-Poly1305(chave mestra, conteúdo), com `relicario-v1\0<pasta>/<nome>` como dado associado. Um arquivo trocado de lugar ou alterado não decifra.
+- Chave mestra: 32 bytes aleatórios. `keys/password` guarda `{kind: "argon2id", kdf: {m_kib, t, p}, salt, nonce, key}`; padrão m = 64 MiB, t = 3, p = 1. `keys/recovery` guarda a chave mestra cifrada com a chave de recuperação (32 bytes aleatórios mostrados uma vez em base32, 13 grupos de 4).
+- Trocar a senha reescreve só `keys/password`.
+- Fica visível para quem acessa o destino: o `config`, os nomes dos arquivos (hashes e ids de máquina) e os tamanhos.

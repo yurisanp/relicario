@@ -20,6 +20,22 @@ impl Game {
     pub fn title(&self) -> &str {
         self.config.display_name()
     }
+
+    /// Só histórico? (a loja já leva o save entre máquinas, ou o usuário escolheu).
+    pub fn history_only(&self, cfg: &Config) -> bool {
+        use relicario_catalog::rules::SyncMode;
+        match cfg
+            .rules
+            .iter()
+            .rev()
+            .find(|r| r.game == self.id())
+            .and_then(|r| r.mode)
+        {
+            Some(SyncMode::Completo) => false,
+            Some(SyncMode::Historico) => true,
+            None => self.detected.as_ref().is_some_and(|d| d.steam_cloud),
+        }
+    }
 }
 
 pub fn scan_cache_path() -> PathBuf {

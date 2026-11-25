@@ -23,6 +23,7 @@ relicario-catalog.workspace = true
 relicario-daemon.workspace = true
 relicario-watch.workspace = true
 relicario-p2p.workspace = true
+rpassword.workspace = true
 serde_json.workspace = true
 clap.workspace = true
 serde.workspace = true
@@ -30,6 +31,8 @@ toml.workspace = true
 getrandom.workspace = true
 
 [dev-dependencies]
+zip.workspace = true
+sha1.workspace = true
 tempfile.workspace = true
 
 [lints]

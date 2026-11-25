@@ -19,6 +19,9 @@ pub struct State {
     /// Por nome do executável em minúsculas.
     #[serde(default)]
     pub unknown: BTreeMap<String, UnknownApp>,
+    /// Última conferência completa de cada nuvem (ms).
+    #[serde(default)]
+    pub cloud_checks: BTreeMap<String, i64>,
 }
 
 pub fn path() -> PathBuf {
