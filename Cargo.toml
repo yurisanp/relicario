@@ -37,6 +37,8 @@ serde_yaml_ng = "0.10"
 glob = "0.3"
 ureq = { version = "3", default-features = false, features = ["rustls", "gzip"] }
 winreg = "0.56"
+interprocess = "2"
+sysinfo = { version = "0.38", default-features = false, features = ["system"] }
 tempfile = "3"
 
 [workspace.lints.rust]

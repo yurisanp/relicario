@@ -308,3 +308,88 @@ pub fn apply_retention(l: &mut Local<'_>, policy: Policy, now: i64) -> Result<Ve
     }
     Ok(out)
 }
+
+/// Marca o jogo como aberto (ou fechado) nesta máquina.
+pub fn set_running(l: &mut Local<'_>, game: &GameId, since: Option<i64>) -> Result<()> {
+    let mut h = l.heads()?;
+    match since {
+        Some(t) => {
+            h.running.insert(game.clone(), t);
+        }
+        None => {
+            h.running.remove(game);
+        }
+    }
+    l.save_heads(h)
+}
+
+/// Soma tempo de jogo.
+pub fn add_playtime(l: &mut Local<'_>, game: &GameId, ms: u64) -> Result<()> {
+    let mut h = l.heads()?;
+    *h.playtime.entry(game.clone()).or_default() += ms;
+    l.save_heads(h)
+}
+
+/// Associa um executável a um jogo.
+pub fn associate(l: &mut Local<'_>, game: &GameId, exe_name: &str) -> Result<()> {
+    let mut h = l.heads()?;
+    let v = h.associations.entry(game.clone()).or_default();
+    if !v.iter().any(|x| x.eq_ignore_ascii_case(exe_name)) {
+        v.push(exe_name.to_string());
+    }
+    l.save_heads(h)
+}
+
+/// Outras máquinas com o jogo aberto agora: (nome da máquina, desde quando). Marcas com mais de
+/// 12 horas são ignoradas (máquina que desligou sem avisar).
+pub fn open_elsewhere(l: &Local<'_>, game: &GameId, now: i64) -> Result<Vec<(String, i64)>> {
+    let mut out = Vec::new();
+    for h in l.repo.heads()? {
+        if h.machine.as_ref() == Some(&l.machine) {
+            continue;
+        }
+        if let Some(t) = h.running.get(game)
+            && now - t < 12 * 3_600_000
+        {
+            let name = if h.machine_name.is_empty() {
+                h.machine.map(|m| m.to_string()).unwrap_or_default()
+            } else {
+                h.machine_name
+            };
+            out.push((name, *t));
+        }
+    }
+    Ok(out)
+}
+
+/// Executáveis associados a cada jogo, juntando todas as máquinas.
+pub fn all_associations(repo: &Repository) -> Result<BTreeMap<GameId, Vec<String>>> {
+    let mut out: BTreeMap<GameId, Vec<String>> = BTreeMap::new();
+    for h in repo.heads()? {
+        for (g, exes) in h.associations {
+            let v = out.entry(g).or_default();
+            for e in exes {
+                if !v.iter().any(|x| x.eq_ignore_ascii_case(&e)) {
+                    v.push(e);
+                }
+            }
+        }
+    }
+    Ok(out)
+}
+
+/// Tempo de jogo por máquina (nome da máquina → ms).
+pub fn playtime_by_machine(repo: &Repository, game: &GameId) -> Result<Vec<(String, u64)>> {
+    let mut out = Vec::new();
+    for h in repo.heads()? {
+        if let Some(ms) = h.playtime.get(game) {
+            let name = if h.machine_name.is_empty() {
+                h.machine.map(|m| m.to_string()).unwrap_or_default()
+            } else {
+                h.machine_name
+            };
+            out.push((name, *ms));
+        }
+    }
+    Ok(out)
+}

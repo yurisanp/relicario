@@ -2,21 +2,69 @@
 //! `localconfig.vdf`).
 
 use crate::error::{Error, Result};
-use std::collections::BTreeMap;
 
-/// Um valor VDF: texto ou bloco aninhado. Chaves repetidas ficam com o último valor; a
-/// comparação de chaves ignora maiúsculas.
+/// Um valor VDF: texto ou bloco aninhado. A ordem e a grafia das chaves são preservadas, para
+/// regravar arquivos da Steam sem estragá-los; a busca de chaves ignora maiúsculas.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Vdf {
     Str(String),
-    Map(BTreeMap<String, Vdf>),
+    Map(Vec<(String, Vdf)>),
 }
 
 impl Vdf {
+    pub fn new_map() -> Self {
+        Vdf::Map(Vec::new())
+    }
+
     pub fn get(&self, key: &str) -> Option<&Vdf> {
         match self {
-            Vdf::Map(m) => m.get(&key.to_ascii_lowercase()),
+            // A última ocorrência ganha, como na Steam.
+            Vdf::Map(m) => m
+                .iter()
+                .rev()
+                .find(|(k, _)| k.eq_ignore_ascii_case(key))
+                .map(|(_, v)| v),
             Vdf::Str(_) => None,
+        }
+    }
+
+    pub fn get_mut(&mut self, key: &str) -> Option<&mut Vdf> {
+        match self {
+            Vdf::Map(m) => m
+                .iter_mut()
+                .rev()
+                .find(|(k, _)| k.eq_ignore_ascii_case(key))
+                .map(|(_, v)| v),
+            Vdf::Str(_) => None,
+        }
+    }
+
+    /// Bloco filho, criado se não existir.
+    pub fn child_mut(&mut self, key: &str) -> &mut Vdf {
+        if self.get(key).is_none_or(|v| v.str().is_some()) {
+            self.set(key, Vdf::new_map());
+        }
+        self.get_mut(key).expect("acabou de criar")
+    }
+
+    /// Define uma chave (substitui a existente, mantendo a posição).
+    pub fn set(&mut self, key: &str, value: Vdf) {
+        if let Vdf::Map(m) = self {
+            if let Some(slot) = m
+                .iter_mut()
+                .rev()
+                .find(|(k, _)| k.eq_ignore_ascii_case(key))
+            {
+                slot.1 = value;
+            } else {
+                m.push((key.to_string(), value));
+            }
+        }
+    }
+
+    pub fn remove(&mut self, key: &str) {
+        if let Vdf::Map(m) = self {
+            m.retain(|(k, _)| !k.eq_ignore_ascii_case(key));
         }
     }
 
@@ -38,11 +86,42 @@ impl Vdf {
 
     pub fn entries(&self) -> impl Iterator<Item = (&String, &Vdf)> {
         match self {
-            Vdf::Map(m) => Some(m.iter()),
+            Vdf::Map(m) => Some(m.iter().map(|(k, v)| (k, v))),
             Vdf::Str(_) => None,
         }
         .into_iter()
         .flatten()
+    }
+
+    /// Texto no formato da Steam (tabs, chaves entre aspas).
+    pub fn to_text(&self) -> String {
+        let mut out = String::new();
+        if let Vdf::Map(m) = self {
+            for (k, v) in m {
+                write_entry(&mut out, k, v, 0);
+            }
+        }
+        out
+    }
+}
+
+fn quote(s: &str) -> String {
+    format!("\"{}\"", s.replace('\\', "\\\\").replace('"', "\\\""))
+}
+
+fn write_entry(out: &mut String, k: &str, v: &Vdf, depth: usize) {
+    let ind = "\t".repeat(depth);
+    match v {
+        Vdf::Str(s) => {
+            out.push_str(&format!("{ind}{}\t\t{}\n", quote(k), quote(s)));
+        }
+        Vdf::Map(m) => {
+            out.push_str(&format!("{ind}{}\n{ind}{{\n", quote(k)));
+            for (ck, cv) in m {
+                write_entry(out, ck, cv, depth + 1);
+            }
+            out.push_str(&format!("{ind}}}\n"));
+        }
     }
 }
 
@@ -131,8 +210,8 @@ impl Parser {
         }
     }
 
-    fn map(&mut self, top: bool) -> Result<BTreeMap<String, Vdf>> {
-        let mut m = BTreeMap::new();
+    fn map(&mut self, top: bool) -> Result<Vec<(String, Vdf)>> {
+        let mut m = Vec::new();
         loop {
             self.skip_ws();
             if self.pos >= self.chars.len() {
@@ -158,12 +237,12 @@ impl Parser {
             if self.pos < self.chars.len() && self.chars[self.pos] == '{' {
                 self.pos += 1;
                 let child = self.map(false)?;
-                m.insert(key.to_ascii_lowercase(), Vdf::Map(child));
+                m.push((key, Vdf::Map(child)));
             } else {
                 let v = self
                     .token()?
                     .ok_or_else(|| Error::Vdf(format!("chave {key:?} sem valor")))?;
-                m.insert(key.to_ascii_lowercase(), Vdf::Str(v));
+                m.push((key, Vdf::Str(v)));
             }
         }
     }
@@ -206,6 +285,40 @@ mod tests {
             Some("123")
         );
         assert_eq!(lf.entries().count(), 2);
+    }
+
+    #[test]
+    fn edita_e_regrava_preservando_o_resto() {
+        let t = "\"UserLocalConfigStore\"\n{\n\t\"Software\"\n\t{\n\t\t\"Valve\"\n\t\t{\n\t\t\t\"Steam\"\n\t\t\t{\n\t\t\t\t\"apps\"\n\t\t\t\t{\n\t\t\t\t\t\"10\"\n\t\t\t\t\t{\n\t\t\t\t\t\t\"LastPlayed\"\t\t\"1\"\n\t\t\t\t\t}\n\t\t\t\t}\n\t\t\t}\n\t\t}\n\t}\n\t\"Zeta\"\t\t\"c:\\\\x \\\"y\\\"\"\n}\n";
+        let mut v = parse(t).unwrap();
+        assert_eq!(v.to_text(), t, "ida e volta sem mudança");
+        let apps = v
+            .get_mut("userlocalconfigstore")
+            .unwrap()
+            .child_mut("Software")
+            .child_mut("Valve")
+            .child_mut("Steam")
+            .child_mut("apps");
+        apps.child_mut("10").set(
+            "LaunchOptions",
+            Vdf::Str("relicario run -- %command%".into()),
+        );
+        apps.child_mut("20")
+            .set("LaunchOptions", Vdf::Str("x".into()));
+        let again = parse(&v.to_text()).unwrap();
+        let a = again
+            .path(&["UserLocalConfigStore", "Software", "Valve", "Steam", "apps"])
+            .unwrap();
+        assert_eq!(
+            a.path(&["10", "LaunchOptions"]).unwrap().str(),
+            Some("relicario run -- %command%")
+        );
+        assert_eq!(a.path(&["10", "LastPlayed"]).unwrap().str(), Some("1"));
+        assert_eq!(a.path(&["20", "launchoptions"]).unwrap().str(), Some("x"));
+        assert_eq!(
+            again.path(&["UserLocalConfigStore", "Zeta"]).unwrap().str(),
+            Some("c:\\x \"y\"")
+        );
     }
 
     #[test]

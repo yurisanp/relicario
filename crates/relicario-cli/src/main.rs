@@ -1,7 +1,8 @@
 //! `relicario`: linha de comando.
 
-mod config;
-mod games;
+mod servico;
+
+use relicario_daemon::{config, games};
 
 use clap::{Parser, Subcommand};
 use config::{Config, GameConfig, RootConfig};
@@ -102,6 +103,33 @@ enum Cmd {
     },
     /// Mostra informações do ambiente
     Doctor,
+    /// Abre um jogo sincronizando antes e depois (use nas opções de inicialização da loja)
+    Run {
+        /// Id do jogo (sem isso, descobre pela Steam ou pelo executável)
+        #[arg(long)]
+        game: Option<String>,
+        /// Comando do jogo
+        #[arg(last = true, required = true)]
+        command: Vec<String>,
+    },
+    /// Controla o daemon
+    #[command(subcommand)]
+    Daemon(servico::DaemonCmd),
+    /// Instala o daemon como serviço do usuário
+    #[command(subcommand)]
+    Service(servico::ServiceCmd),
+    /// Integra com Steam, Heroic e Lutris
+    #[command(subcommand)]
+    Launcher(servico::LauncherCmd),
+    /// Diz que um executável é de um jogo (vale para todas as máquinas)
+    Associate {
+        game: String,
+        #[arg(long)]
+        exe: String,
+    },
+    /// Executáveis desconhecidos vistos rodando
+    #[command(subcommand)]
+    Apps(servico::AppsCmd),
 }
 
 #[derive(Subcommand)]
@@ -231,6 +259,12 @@ fn run(cmd: Cmd) -> R<ExitCode> {
             set,
             refresh,
         } => cmd_art(game, kind, set, refresh),
+        Cmd::Run { game, command } => servico::cmd_run(game, command),
+        Cmd::Daemon(c) => servico::cmd_daemon(c),
+        Cmd::Service(c) => servico::cmd_service(c),
+        Cmd::Launcher(c) => servico::cmd_launcher(c),
+        Cmd::Associate { game, exe } => servico::cmd_associate(game, exe),
+        Cmd::Apps(c) => servico::cmd_apps(c),
         other => {
             let cfg = Config::load()?;
             let mut repo = open_repo(&cfg)?;
@@ -267,7 +301,13 @@ fn run(cmd: Cmd) -> R<ExitCode> {
                 | Cmd::Doctor
                 | Cmd::Scan { .. }
                 | Cmd::Manifest(_)
-                | Cmd::Art { .. } => {
+                | Cmd::Art { .. }
+                | Cmd::Run { .. }
+                | Cmd::Daemon(_)
+                | Cmd::Service(_)
+                | Cmd::Launcher(_)
+                | Cmd::Associate { .. }
+                | Cmd::Apps(_) => {
                     unreachable!()
                 }
             }
@@ -299,6 +339,7 @@ fn cmd_init(repo: String, name: Option<String>) -> R<ExitCode> {
                 auto_detect: true,
                 rules: vec![],
                 steamgriddb_key: None,
+                periodic_secs: None,
             }
         }
     };
@@ -351,6 +392,7 @@ fn cmd_game(g: GameCmd) -> R<ExitCode> {
                     id: id.clone(),
                     name: name.unwrap_or_default(),
                     roots: vec![rc],
+                    executables: vec![],
                 }),
             }
             cfg.save()?;
@@ -593,7 +635,14 @@ fn cmd_restore(
     game: &str,
     snapshot: Option<String>,
 ) -> R<ExitCode> {
-    let g = games::find(cfg, game)?.config;
+    let found = games::find(cfg, game)?;
+    if servico::running_here(cfg, &found) {
+        return Err(format!(
+            "{} está aberto nesta máquina; feche o jogo antes de restaurar",
+            found.title()
+        ));
+    }
+    let g = found.config;
     let spec = g.spec()?;
     let target = match snapshot {
         Some(p) => resolve(l.repo, &p)?,

@@ -15,6 +15,7 @@
 pub mod art;
 pub mod emulators;
 mod error;
+pub mod launchers;
 pub mod manifest;
 pub mod mirror;
 pub mod resolve;

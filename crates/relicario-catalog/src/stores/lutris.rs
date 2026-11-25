@@ -29,7 +29,7 @@ struct LutrisGame {
 }
 
 /// `celeste-1700000000.yml` → `celeste`.
-fn slug_of(file: &str) -> String {
+pub fn slug_of(file: &str) -> String {
     let stem = file.trim_end_matches(".yml");
     match stem.rsplit_once('-') {
         Some((s, ts)) if ts.chars().all(|c| c.is_ascii_digit()) => s.to_string(),
