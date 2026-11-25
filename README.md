@@ -36,7 +36,7 @@ Documentação em [`docs/`](docs): [roadmap](docs/roadmap.md), [conectores de ar
 
 ## Compilar
 
-Requer Rust estável (1.88 ou mais novo).
+Requer Rust estável (1.91 ou mais novo).
 
 ```sh
 cargo build --workspace

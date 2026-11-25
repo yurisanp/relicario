@@ -18,6 +18,8 @@ getrandom.workspace = true
 opendal.workspace = true
 tokio.workspace = true
 reqwest.workspace = true
+opendal-http-transport-reqwest.workspace = true
+rustls.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true

@@ -166,9 +166,26 @@ fn map_err(path: &str, e: opendal::Error) -> Error {
     }
 }
 
+/// Instala uma vez o cliente HTTP do opendal (reqwest com rustls e `ring`).
+fn http_transport() {
+    static ONCE: std::sync::Once = std::sync::Once::new();
+    ONCE.call_once(|| {
+        let client = reqwest::Client::builder()
+            .user_agent(concat!("relicario/", env!("CARGO_PKG_VERSION")))
+            .build()
+            .unwrap_or_default();
+        opendal::HttpTransporter::install_default(
+            opendal_http_transport_reqwest::ReqwestTransport::new(client),
+        );
+    });
+}
+
 impl Cloud {
     pub fn open(spec: &CloudSpec) -> Result<Self> {
         use opendal::services;
+        // O cliente HTTP usa o provedor de criptografia do processo: o mesmo `ring` do p2p.
+        let _ = rustls::crypto::ring::default_provider().install_default();
+        http_transport();
         let op = match spec {
             CloudSpec::S3 {
                 endpoint,
@@ -189,7 +206,7 @@ impl Cloud {
                 if !endpoint.is_empty() {
                     b = b.endpoint(endpoint);
                 }
-                opendal::Operator::new(b).map_err(cfg_err)?.finish()
+                opendal::Operator::new(b).map_err(cfg_err)?
             }
             CloudSpec::Webdav {
                 endpoint,
@@ -203,7 +220,7 @@ impl Cloud {
                 if !user.is_empty() {
                     b = b.username(user).password(password);
                 }
-                opendal::Operator::new(b).map_err(cfg_err)?.finish()
+                opendal::Operator::new(b).map_err(cfg_err)?
             }
             CloudSpec::Gdrive {
                 root,
@@ -216,20 +233,18 @@ impl Cloud {
                     .client_id(client_id)
                     .client_secret(client_secret)
                     .refresh_token(refresh_token);
-                opendal::Operator::new(b).map_err(cfg_err)?.finish()
+                opendal::Operator::new(b).map_err(cfg_err)?
             }
             CloudSpec::Pasta { path } => {
                 std::fs::create_dir_all(path).map_err(|e| Error::Io {
                     path: path.clone(),
                     source: e,
                 })?;
-                opendal::Operator::new(services::Fs::default().root(path))
-                    .map_err(cfg_err)?
-                    .finish()
+                opendal::Operator::new(services::Fs::default().root(path)).map_err(cfg_err)?
             }
-            CloudSpec::Memory => opendal::Operator::new(services::Memory::default())
-                .map_err(cfg_err)?
-                .finish(),
+            CloudSpec::Memory => {
+                opendal::Operator::new(services::Memory::default()).map_err(cfg_err)?
+            }
         };
         let op = op
             .layer(
@@ -242,7 +257,7 @@ impl Cloud {
                     .with_timeout(Duration::from_secs(120))
                     .with_io_timeout(Duration::from_secs(60)),
             );
-        let rename = op.info().full_capability().rename
+        let rename = op.info().capability().rename
             && matches!(spec, CloudSpec::Webdav { .. } | CloudSpec::Pasta { .. });
         Ok(Cloud {
             op,
