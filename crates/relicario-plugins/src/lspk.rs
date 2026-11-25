@@ -104,7 +104,7 @@ impl<'a> Package<'a> {
         let comp = data.get(list + 8..list + 8 + csize)?;
         let raw = lz4_flex::block::decompress(comp, count * ENTRY).ok()?;
         let mut entries = Vec::with_capacity(count);
-        for e in raw.chunks_exact(ENTRY) {
+        for e in raw.as_chunks::<ENTRY>().0 {
             let end = e[..256].iter().position(|b| *b == 0).unwrap_or(256);
             let name = String::from_utf8_lossy(&e[..end]).replace('\\', "/");
             let low = u32_at(e, 256)? as u64;
