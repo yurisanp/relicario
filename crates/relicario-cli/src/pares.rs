@@ -25,7 +25,7 @@ fn ask(req: Request) -> R<Vec<String>> {
     match ipc::request(&req).map_err(|e| e.to_string())? {
         Response::Ok { messages } => Ok(messages),
         Response::Error { message } => Err(message),
-        Response::Status { .. } => Ok(vec![]),
+        _ => Ok(vec![]),
     }
 }
 

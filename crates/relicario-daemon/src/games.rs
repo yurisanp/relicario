@@ -38,6 +38,39 @@ impl Game {
     }
 }
 
+impl Game {
+    /// O que se sabe do jogo para procurar arte.
+    pub fn art_query(&self) -> relicario_catalog::art::ArtQuery {
+        let d = self.detected.as_ref();
+        let store_id = |store: &str| {
+            d.filter(|d| d.store.as_deref() == Some(store))
+                .and_then(|d| d.store_id.as_ref())
+                .and_then(|i| i.parse().ok())
+        };
+        relicario_catalog::art::ArtQuery {
+            id: self.id().to_string(),
+            title: self.title().to_string(),
+            steam_appid: store_id("steam"),
+            gog_id: store_id("gog"),
+            lutris_slug: d
+                .filter(|d| d.launcher.as_deref() == Some("lutris"))
+                .and_then(|d| d.store_id.clone()),
+        }
+    }
+}
+
+/// Cache de arte com as fontes locais desta máquina e a chave do SteamGridDB.
+pub fn art_cache(cfg: &Config) -> relicario_catalog::art::ArtCache {
+    use relicario_catalog::art::ArtCache;
+    let home = relicario_platform::home_dir().unwrap_or_default();
+    let mut cache = ArtCache::new(ArtCache::default_dir());
+    cache.steam_roots = relicario_catalog::stores::discover(&home).steam_roots;
+    cache.lutris_dirs = vec![home.join(".local/share/lutris")];
+    cache.steamgriddb_key = cfg.steamgriddb_key.clone();
+    cache.online = std::env::var_os("RELICARIO_OFFLINE").is_none();
+    cache
+}
+
 pub fn scan_cache_path() -> PathBuf {
     relicario_platform::data_dir().join("scan.json")
 }

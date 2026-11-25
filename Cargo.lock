@@ -1778,6 +1778,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4050469837a6ff301cd14c1f8f24f88549e6d548f24f64e2148eb0f72cebc51f"
 
 [[package]]
+name = "lz4_flex"
+version = "0.14.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f56455fff36934a9500d69062aec1c77037179b6f0669e4d5d6b72b84722d6a3"
+dependencies = [
+ "twox-hash",
+]
+
+[[package]]
 name = "md-5"
 version = "0.11.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2553,6 +2562,7 @@ dependencies = [
 name = "relicario-daemon"
 version = "0.0.1"
 dependencies = [
+ "base64 0.22.1",
  "blake3",
  "getrandom 0.3.4",
  "interprocess",
@@ -2561,6 +2571,7 @@ dependencies = [
  "relicario-model",
  "relicario-p2p",
  "relicario-platform",
+ "relicario-plugins",
  "relicario-store",
  "relicario-transport",
  "relicario-watch",
@@ -2625,7 +2636,11 @@ dependencies = [
 name = "relicario-plugins"
 version = "0.0.1"
 dependencies = [
- "relicario-model",
+ "flate2",
+ "lz4_flex",
+ "serde",
+ "serde_json",
+ "zstd",
 ]
 
 [[package]]
@@ -2919,7 +2934,7 @@ dependencies = [
  "security-framework 3.7.0",
  "security-framework-sys",
  "webpki-root-certs",
- "windows-sys 0.52.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -3647,6 +3662,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e421abadd41a4225275504ea4d6566923418b7f05506fbc9c0fe86ba7396114b"
 
 [[package]]
+name = "twox-hash"
+version = "2.1.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "86a801b3cea342a06d468c8710662aa29e5e05e4f5c0d62f00bbb7f2ad7941c2"
+
+[[package]]
 name = "typed-path"
 version = "0.13.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3966,7 +3987,7 @@ version = "0.1.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c2a7b1c03c876122aa43f3020e6c3c3ee5c05081c9a00739faf7503aeba10d22"
 dependencies = [
- "windows-sys 0.52.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]

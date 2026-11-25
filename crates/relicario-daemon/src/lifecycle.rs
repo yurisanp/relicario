@@ -105,9 +105,53 @@ fn machine_name(l: &Local<'_>, m: &MachineId) -> String {
         .unwrap_or_else(|| m.to_string())
 }
 
+impl SyncOutcome {
+    /// Tipo para a atividade.
+    pub fn kind(&self) -> &'static str {
+        match self {
+            SyncOutcome::EmDia => "em_dia",
+            SyncOutcome::SoHistorico { .. } => "so_historico",
+            SyncOutcome::Guardado { .. } => "guardado",
+            SyncOutcome::Suspeito { .. } => "suspeito",
+            SyncOutcome::Restaurado { .. } => "restaurado",
+            SyncOutcome::AdiadoJogoAberto { .. } => "adiado",
+            SyncOutcome::Conflito { .. } => "conflito",
+        }
+    }
+}
+
 /// Sincroniza um jogo: guarda o que mudou e, se `allow_restore`, traz o que está mais novo em
 /// outra máquina. Nunca restaura com conflito nem sem cópia de segurança.
 pub fn sync_game(
+    cfg: &Config,
+    game: &Game,
+    reason: SnapshotReason,
+    allow_restore: bool,
+) -> Result<SyncOutcome, String> {
+    let r = sync_game_inner(cfg, game, reason, allow_restore);
+    match &r {
+        Ok(out) => {
+            let prev = crate::activity::last()
+                .get(game.id())
+                .map(|(_, o)| o.clone());
+            let repeated = prev.as_ref() == Some(out);
+            let always = matches!(
+                out,
+                SyncOutcome::Guardado { .. } | SyncOutcome::Restaurado { .. }
+            );
+            if *out != SyncOutcome::EmDia && (always || !repeated) {
+                crate::activity::record(out.kind(), Some(game.id()), out.describe(game.title()));
+            }
+            crate::activity::set_last(game.id(), out);
+        }
+        Err(e) => {
+            crate::activity::record("erro", Some(game.id()), format!("{}: {e}", game.title()))
+        }
+    }
+    r
+}
+
+fn sync_game_inner(
     cfg: &Config,
     game: &Game,
     reason: SnapshotReason,

@@ -287,6 +287,45 @@ pub fn restore(l: &mut Local<'_>, game: &GameSpec, target: SnapshotId) -> Result
     Ok(RestoreOutcome { safety, report })
 }
 
+/// Resolve um conflito ficando com o conteúdo de `keep`. Grava um snapshot de merge (pais:
+/// `keep` e as outras pontas), restaura esse conteúdo no disco (com cópia de segurança, como
+/// toda restauração) e faz dele o head. As outras versões continuam no histórico.
+pub fn resolve(
+    l: &mut Local<'_>,
+    game: &GameSpec,
+    keep: SnapshotId,
+    others: &[SnapshotId],
+) -> Result<(SnapshotId, RestoreOutcome)> {
+    let kept = l.repo.get_snapshot(&keep)?;
+    if kept.game != game.id {
+        return Err(Error::Corrupt(format!(
+            "snapshot {} é do jogo {}, não de {}",
+            keep.short(),
+            kept.game,
+            game.id
+        )));
+    }
+    for o in others {
+        let s = l.repo.get_snapshot(o)?;
+        if s.game != game.id {
+            return Err(Error::Corrupt(format!(
+                "snapshot {} não é de {}",
+                o.short(),
+                game.id
+            )));
+        }
+    }
+    let tree = l.repo.get_tree(&kept.tree)?;
+    let mut parents = vec![keep];
+    parents.extend(others.iter().filter(|o| **o != keep).copied());
+    let merge = {
+        let _lock = l.repo.lock(&l.machine, crate::lock::LockMode::Shared)?;
+        write_snapshot(l, game, &tree, parents, SnapshotReason::Merge, vec![])?
+    };
+    let out = restore(l, game, merge)?;
+    Ok((merge, out))
+}
+
 /// Move o head sem tocar no disco (o conteúdo já é o mesmo).
 pub fn adopt(l: &mut Local<'_>, game: &GameId, target: SnapshotId) -> Result<()> {
     l.set_head(game, target)

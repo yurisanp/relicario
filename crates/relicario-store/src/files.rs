@@ -328,6 +328,18 @@ fn safe_join(root: &Path, rel: &str) -> Result<PathBuf> {
     Ok(p)
 }
 
+/// Conteúdo de um arquivo de um snapshot, conferido pelo hash.
+pub fn read_entry(repo: &Repository, f: &FileEntry) -> Result<Vec<u8>> {
+    let mut out = Vec::with_capacity(f.size as usize);
+    for c in &f.chunks {
+        out.extend_from_slice(&repo.get_blob(c)?);
+    }
+    if Hash::from_bytes(*blake3::hash(&out).as_bytes()) != f.hash {
+        return Err(Error::Corrupt(format!("{} não confere com o hash", f.path)));
+    }
+    Ok(out)
+}
+
 fn write_file(repo: &Repository, f: &FileEntry, dest: &Path) -> Result<()> {
     let dir = dest.parent().expect("arquivo tem pasta");
     fs::create_dir_all(dir).map_err(io(dir))?;

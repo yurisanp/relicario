@@ -83,6 +83,17 @@ pub struct ArtInfo {
     pub author: Option<String>,
 }
 
+/// Uma opção de arte do SteamGridDB.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ArtChoice {
+    pub url: String,
+    /// Versão pequena para a grade do seletor.
+    pub thumb: String,
+    pub author: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub style: Option<String>,
+}
+
 /// O que se sabe do jogo para procurar arte.
 #[derive(Debug, Clone, Default)]
 pub struct ArtQuery {
@@ -237,11 +248,15 @@ impl ArtCache {
         None
     }
 
+    /// Opções do SteamGridDB para o seletor de arte (até `limit`), com o crédito de cada autor.
     #[cfg(feature = "net")]
-    fn find_sgdb(&self, q: &ArtQuery, kind: ArtKind) -> Result<Option<ArtInfo>> {
+    pub fn choices(&self, q: &ArtQuery, kind: ArtKind, limit: usize) -> Result<Vec<ArtChoice>> {
         let Some(key) = &self.steamgriddb_key else {
-            return Ok(None);
+            return Ok(vec![]);
         };
+        if !self.online {
+            return Ok(vec![]);
+        }
         let agent = http_agent();
         let base = "https://www.steamgriddb.com/api/v2";
         let dims = if kind == ArtKind::Capa {
@@ -262,29 +277,76 @@ impl ArtCache {
                 .and_then(|g| g.get("id"))
                 .and_then(|i| i.as_u64())
             else {
-                return Ok(None);
+                return Ok(vec![]);
             };
             format!("{base}/{}/game/{id}{dims}", kind.sgdb_path())
         };
         let v = get_json(&agent, &url, key)?;
-        let Some(first) = v.get("data").and_then(|d| d.get(0)) else {
+        let list = v
+            .get("data")
+            .and_then(|d| d.as_array())
+            .cloned()
+            .unwrap_or_default();
+        Ok(list
+            .iter()
+            .filter_map(|it| {
+                let url = it.get("url")?.as_str()?.to_string();
+                Some(ArtChoice {
+                    thumb: it
+                        .get("thumb")
+                        .and_then(|t| t.as_str())
+                        .unwrap_or(&url)
+                        .to_string(),
+                    url,
+                    author: it
+                        .get("author")
+                        .and_then(|a| a.get("name"))
+                        .and_then(|n| n.as_str())
+                        .map(str::to_string),
+                    style: it.get("style").and_then(|s| s.as_str()).map(str::to_string),
+                })
+            })
+            .take(limit)
+            .collect())
+    }
+
+    #[cfg(not(feature = "net"))]
+    pub fn choices(&self, _q: &ArtQuery, _kind: ArtKind, _limit: usize) -> Result<Vec<ArtChoice>> {
+        Ok(vec![])
+    }
+
+    /// Troca a arte por uma opção do SteamGridDB.
+    #[cfg(feature = "net")]
+    pub fn set_choice(&self, id: &str, kind: ArtKind, c: &ArtChoice) -> Result<ArtInfo> {
+        let path = self.download(&http_agent(), id, kind, &c.url)?;
+        let info = ArtInfo {
+            kind,
+            source: "steamgriddb".into(),
+            path,
+            url: Some(c.url.clone()),
+            author: c.author.clone(),
+        };
+        self.save_info(id, &info)?;
+        Ok(info)
+    }
+
+    #[cfg(not(feature = "net"))]
+    pub fn set_choice(&self, _id: &str, _kind: ArtKind, _c: &ArtChoice) -> Result<ArtInfo> {
+        Err(Error::Net("sem rede nesta versão".into()))
+    }
+
+    #[cfg(feature = "net")]
+    fn find_sgdb(&self, q: &ArtQuery, kind: ArtKind) -> Result<Option<ArtInfo>> {
+        let Some(first) = self.choices(q, kind, 1)?.into_iter().next() else {
             return Ok(None);
         };
-        let Some(img) = first.get("url").and_then(|u| u.as_str()) else {
-            return Ok(None);
-        };
-        let author = first
-            .get("author")
-            .and_then(|a| a.get("name"))
-            .and_then(|n| n.as_str())
-            .map(str::to_string);
-        let path = self.download(&agent, &q.id, kind, img)?;
+        let path = self.download(&http_agent(), &q.id, kind, &first.url)?;
         Ok(Some(ArtInfo {
             kind,
             source: "steamgriddb".into(),
             path,
-            url: Some(img.into()),
-            author,
+            url: Some(first.url),
+            author: first.author,
         }))
     }
 

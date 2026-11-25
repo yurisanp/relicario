@@ -68,6 +68,10 @@ fn print_response(r: Response) -> R<()> {
             Ok(())
         }
         Response::Error { message } => Err(message),
+        Response::Api { value } => {
+            println!("{value:#}");
+            Ok(())
+        }
         Response::Status {
             pid,
             version,
@@ -207,7 +211,7 @@ pub fn cmd_run(game: Option<String>, command: Vec<String>) -> R<ExitCode> {
             .and_then(|r| match r {
                 Response::Ok { messages } => Ok(messages),
                 Response::Error { message } => Err(message),
-                Response::Status { .. } => Ok(vec![]),
+                _ => Ok(vec![]),
             })
         } else {
             lifecycle::before_launch(cfg, g)
@@ -232,7 +236,7 @@ pub fn cmd_run(game: Option<String>, command: Vec<String>) -> R<ExitCode> {
             .and_then(|r| match r {
                 Response::Ok { messages } => Ok(messages),
                 Response::Error { message } => Err(message),
-                Response::Status { .. } => Ok(vec![]),
+                _ => Ok(vec![]),
             })
         } else {
             lifecycle::after_exit(cfg, g, Some(started_at)).map(|mut m| {

@@ -80,8 +80,10 @@ fn nuvem_ilegivel_sem_chave_e_envio_incremental_pequeno() {
                 !bytes.windows(marca.len()).any(|w| w == &marca[..]),
                 "{kind:?}/{n} vazou o save"
             );
+            // Campo do JSON de snapshot. Longo o bastante para não aparecer por acaso em 20 MB
+            // de bytes cifrados (um padrão de 4 bytes aparece em ~0,5% das execuções).
             assert!(
-                !bytes.windows(4).any(|w| w == b"\"bg3"),
+                !bytes.windows(8).any(|w| w == b"\"game\":\""),
                 "{kind:?}/{n} vazou metadados"
             );
         }

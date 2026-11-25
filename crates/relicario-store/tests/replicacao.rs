@@ -195,3 +195,45 @@ fn arquivo_adulterado_e_recusado() {
     assert_eq!(r.rejected, vec![format!("packs/{pack}")]);
     assert!(b.remote().get(Kind::Packs, &pack).unwrap().is_none());
 }
+
+#[test]
+fn resolver_conflito_mantendo_a_versao_da_outra_maquina() {
+    let t = tempfile::tempdir().unwrap();
+    let a = Machine::new(t.path(), "pc", "PC");
+    let b = Machine::new(t.path(), "note", "Notebook");
+    Repository::init(Arc::new(a.remote())).unwrap();
+    Repository::init(Arc::new(b.remote())).unwrap();
+    a.play(b"comum");
+    replicate(&a.remote(), &b.remote(), &a.id).unwrap();
+    let Action::Avancar { to, .. } = b.plan() else {
+        panic!()
+    };
+    b.with(|l| ops::restore(l, &spec(&b.save), to).unwrap());
+    a.play(b"no pc");
+    b.play(b"no notebook");
+    replicate(&a.remote(), &b.remote(), &a.id).unwrap();
+    let Action::Conflito { tips } = a.plan() else {
+        panic!("{:?}", a.plan())
+    };
+    let theirs = tips.iter().find(|(m, _)| *m == b.id).unwrap().1;
+    // A ponta local aparece com um id especial.
+    let ours = tips.iter().find(|(m, _)| *m != b.id).unwrap().1;
+    let (merge, out) = a.with(|l| ops::resolve(l, &spec(&a.save), theirs, &[ours]).unwrap());
+    // O save do PC já estava guardado: nada de cópia de segurança.
+    assert_eq!(out.safety, None);
+    assert_eq!(
+        fs::read(a.save.join("caption.sav")).unwrap(),
+        b"no notebook"
+    );
+    let s = a.with(|l| l.repo.get_snapshot(&merge).unwrap());
+    assert_eq!(s.parents, vec![theirs, ours]);
+    assert_eq!(s.reason, SnapshotReason::Merge);
+    assert_eq!(a.plan(), Action::Nada);
+    // Do lado do notebook, o merge tem o mesmo conteúdo e descende do que ele tem: sem conflito.
+    replicate(&a.remote(), &b.remote(), &a.id).unwrap();
+    match b.plan() {
+        Action::Nada => {}
+        Action::Adotar { to } | Action::Avancar { to, .. } => assert_eq!(to, merge),
+        other => panic!("{other:?}"),
+    }
+}
