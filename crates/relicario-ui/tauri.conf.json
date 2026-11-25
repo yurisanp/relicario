@@ -38,6 +38,17 @@
     "category": "Utility",
     "shortDescription": "Saves dos seus jogos em todas as máquinas",
     "longDescription": "Guarda o histórico dos saves e leva o save certo para cada máquina, para jogos sem nuvem da loja.",
-    "licenseFile": null
+    "licenseFile": null,
+    "linux": {
+      "appimage": {
+        "files": {
+          "/usr/lib/libayatana-appindicator3.so.1": "/usr/lib/x86_64-linux-gnu/libayatana-appindicator3.so.1",
+          "/usr/lib/libayatana-indicator3.so.7": "/usr/lib/x86_64-linux-gnu/libayatana-indicator3.so.7",
+          "/usr/lib/libayatana-ido3-0.4.so.0": "/usr/lib/x86_64-linux-gnu/libayatana-ido3-0.4.so.0",
+          "/usr/lib/libdbusmenu-glib.so.4": "/usr/lib/x86_64-linux-gnu/libdbusmenu-glib.so.4",
+          "/usr/lib/libdbusmenu-gtk3.so.4": "/usr/lib/x86_64-linux-gnu/libdbusmenu-gtk3.so.4"
+        }
+      }
+    }
   }
 }
