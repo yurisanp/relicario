@@ -10,4 +10,5 @@ Itens que só o dono do projeto pode fazer (contas, cadastros, assinaturas). Com
 | Fase 6 | Conferir o leitor do BG3 com um save real | Foi escrito pelo formato LSPK 18 conhecido e testado com pacotes montados nos testes |
 | Fase 6 (opcional) | Chave de API do SteamGridDB para testes | A chave é por usuário; o app pede nas configurações |
 | Fase 7, no fim | Conta Apple Developer, certificado de assinatura do Windows, domínio, submissão ao Flathub/AUR/winget | Publicação; fica por último |
-| Fase 7 | Teste de 2 semanas nas duas máquinas reais e teste de usabilidade com 3 pessoas | Critérios de pronto da 1.0 que precisam de gente de verdade |
+| Agora (v1.0.0) | Baixar o AppImage do rascunho do release `v1.0.0` (aba Releases do GitHub) e testar nas duas máquinas, seguindo `docs/guia.md` | O rascunho só fica público quando você publicar; nada foi anunciado |
+| Agora (v1.0.0) | Teste de 2 semanas nas duas máquinas reais e teste de usabilidade com 3 pessoas | Critérios de pronto da 1.0 que precisam de gente de verdade |

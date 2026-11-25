@@ -33,7 +33,7 @@ Plataformas da 1.0: Linux (incluindo Steam Deck), Windows e macOS.
 | [`relicario-restore`](crates/relicario-restore) | Recupera saves de um repositório sem o daemon, só lendo |
 | [`relicario-plugins`](crates/relicario-plugins) | Leitores de save específicos de jogos |
 
-Documentação em [`docs/`](docs): [roadmap](docs/roadmap.md), [conectores de armazenamento](docs/conectores.md), [decisões de arquitetura](docs/adr), [formato do repositório](docs/format.md), [catálogo de jogos](docs/catalogo.md), [daemon](docs/daemon.md), [sincronização direta](docs/p2p.md), [nuvem](docs/nuvem.md), [interface](docs/interface.md), [robustez](docs/robustez.md), [guia do usuário](docs/guia.md) e o [protótipo da interface](docs/design/prototipo.html).
+Mudanças de cada versão no [CHANGELOG](CHANGELOG.md). Documentação em [`docs/`](docs): [roadmap](docs/roadmap.md), [conectores de armazenamento](docs/conectores.md), [decisões de arquitetura](docs/adr), [formato do repositório](docs/format.md), [catálogo de jogos](docs/catalogo.md), [daemon](docs/daemon.md), [sincronização direta](docs/p2p.md), [nuvem](docs/nuvem.md), [interface](docs/interface.md), [robustez](docs/robustez.md), [guia do usuário](docs/guia.md) e o [protótipo da interface](docs/design/prototipo.html).
 
 ## Compilar
 
