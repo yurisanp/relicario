@@ -67,16 +67,22 @@ fn fake_game(save: &Path, new: &str) -> Vec<String> {
     let s = save.join("caption.sav");
     let lido = save.parent().unwrap().join("lido.txt");
     if cfg!(windows) {
-        vec![
-            "cmd".into(),
-            "/C".into(),
+        // Um .bat evita as regras de aspas do cmd.exe com argumentos.
+        let bat = save.parent().unwrap().join(format!(
+            "jogo-{}.bat",
+            save.file_name().unwrap().to_string_lossy()
+        ));
+        fs::write(
+            &bat,
             format!(
-                "type \"{}\" > \"{}\" & echo {new}> \"{}\"",
+                "@type \"{}\" > \"{}\"\r\n@(echo {new})> \"{}\"\r\n",
                 s.display(),
                 lido.display(),
                 s.display()
             ),
-        ]
+        )
+        .unwrap();
+        vec!["cmd".into(), "/C".into(), bat.display().to_string()]
     } else {
         vec![
             "sh".into(),
