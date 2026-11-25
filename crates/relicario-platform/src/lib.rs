@@ -8,6 +8,7 @@
 //! Segredos (chaveiro do sistema) chegam na fase 5.
 
 pub mod notify;
+pub mod secrets;
 pub mod service;
 
 use std::path::PathBuf;

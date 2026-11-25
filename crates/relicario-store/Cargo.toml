@@ -21,6 +21,8 @@ zstd.workspace = true
 fastcdc.workspace = true
 globset.workspace = true
 getrandom.workspace = true
+chacha20poly1305.workspace = true
+argon2.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true
