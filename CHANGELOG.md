@@ -2,6 +2,11 @@
 
 O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e as versões seguem [SemVer](https://semver.org/lang/pt-BR/). O formato do repositório (`docs/format.md`) é a versão 1 e será lido por todas as versões 1.x.
 
+## [1.0.1] - 2026-11-25
+
+### Corrigido
+- O AppImage não abria em distribuições com glib recente (CachyOS, Arch): faltava no pacote a biblioteca da bandeja, e o app usava a do sistema, incompatível com a glib embutida. O CI agora confere que ela está no pacote.
+
 ## [1.0.0] - 2026-11-25
 
 Primeira versão para uso real. Distribuída como AppImage (Linux x86_64) e `.tar.gz` com a linha de comando; Windows e macOS compilam a partir do código e ganham instaladores na publicação.
@@ -40,4 +45,5 @@ Primeira versão para uso real. Distribuída como AppImage (Linux x86_64) e `.ta
 ### Ainda depende do dono do projeto
 Veja `docs/pendencias-do-yuri.md`: client do Google Drive verificado, teste de 2 semanas nas máquinas reais, teste de usabilidade e publicação (assinatura, Flathub, AUR, winget, .dmg).
 
+[1.0.1]: https://github.com/yurisanp/relicario/releases/tag/v1.0.1
 [1.0.0]: https://github.com/yurisanp/relicario/releases/tag/v1.0.0
