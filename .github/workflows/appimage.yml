@@ -23,6 +23,10 @@ concurrency:
 
 env:
   CARGO_TERM_COLOR: always
+  # Client do Google Drive embutido no binário (option_env!). Vazio até existir o client
+  # verificado; aí o login pelo Drive pede as variáveis na hora de rodar.
+  RELICARIO_GDRIVE_CLIENT_ID: ${{ secrets.RELICARIO_GDRIVE_CLIENT_ID }}
+  RELICARIO_GDRIVE_CLIENT_SECRET: ${{ secrets.RELICARIO_GDRIVE_CLIENT_SECRET }}
 
 jobs:
   appimage:

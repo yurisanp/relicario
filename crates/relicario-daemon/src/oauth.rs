@@ -18,13 +18,20 @@ pub const SCOPE: &str = "https://www.googleapis.com/auth/drive.file";
 
 /// Client do projeto, embutido na compilação quando existir.
 pub fn client() -> Option<(String, String)> {
-    let id = std::env::var("RELICARIO_GDRIVE_CLIENT_ID")
-        .ok()
-        .or_else(|| option_env!("RELICARIO_GDRIVE_CLIENT_ID").map(str::to_string))?;
-    let secret = std::env::var("RELICARIO_GDRIVE_CLIENT_SECRET")
-        .ok()
-        .or_else(|| option_env!("RELICARIO_GDRIVE_CLIENT_SECRET").map(str::to_string))
-        .unwrap_or_default();
+    // Vazio conta como ausente: o CI passa a variável vazia enquanto o segredo não existe.
+    let pick = |run: Option<String>, built: Option<&str>| {
+        run.filter(|s| !s.is_empty())
+            .or_else(|| built.filter(|s| !s.is_empty()).map(str::to_string))
+    };
+    let id = pick(
+        std::env::var("RELICARIO_GDRIVE_CLIENT_ID").ok(),
+        option_env!("RELICARIO_GDRIVE_CLIENT_ID"),
+    )?;
+    let secret = pick(
+        std::env::var("RELICARIO_GDRIVE_CLIENT_SECRET").ok(),
+        option_env!("RELICARIO_GDRIVE_CLIENT_SECRET"),
+    )
+    .unwrap_or_default();
     Some((id, secret))
 }
 
