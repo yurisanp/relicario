@@ -113,8 +113,13 @@ pub fn parse_app_manifest(text: &str) -> Option<(String, String, String)> {
 
 /// Encontra Steam, bibliotecas e jogos instalados.
 pub fn discover(home: &Path) -> Steam {
+    discover_from(candidate_roots(home))
+}
+
+/// Como [`discover`], com a lista de pastas candidatas dada.
+pub fn discover_from(candidates: Vec<PathBuf>) -> Steam {
     let mut roots: Vec<PathBuf> = Vec::new();
-    for c in candidate_roots(home) {
+    for c in candidates {
         if is_steam_root(&c) && !roots.iter().any(|r| canon(r) == canon(&c)) {
             roots.push(c);
         }
@@ -227,7 +232,7 @@ pub(crate) mod tests {
     fn encontra_bibliotecas_jogos_e_proton() {
         let t = tempfile::tempdir().unwrap();
         let root = fake_steam(t.path());
-        let s = discover(t.path());
+        let s = discover_from(vec![root.clone(), t.path().join("nao-existe")]);
         assert_eq!(s.roots.len(), 1);
         assert_eq!(libraries(&root).len(), 2);
         assert_eq!(s.installs.len(), 2, "Proton não conta como jogo");
