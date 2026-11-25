@@ -32,7 +32,7 @@ Plataformas da 1.0: Linux (incluindo Steam Deck), Windows e macOS.
 | [`relicario-ui`](crates/relicario-ui) | Interface em Tauri 2 (a partir da fase 6) |
 | [`relicario-plugins`](crates/relicario-plugins) | Leitores de save específicos de jogos |
 
-Documentação em [`docs/`](docs): [roadmap](docs/roadmap.md), [conectores de armazenamento](docs/conectores.md), [decisões de arquitetura](docs/adr), [formato do repositório](docs/format.md), [catálogo de jogos](docs/catalogo.md), [daemon](docs/daemon.md), [sincronização direta](docs/p2p.md), [nuvem](docs/nuvem.md), [interface](docs/interface.md) e o [protótipo da interface](docs/design/prototipo.html).
+Documentação em [`docs/`](docs): [roadmap](docs/roadmap.md), [conectores de armazenamento](docs/conectores.md), [decisões de arquitetura](docs/adr), [formato do repositório](docs/format.md), [catálogo de jogos](docs/catalogo.md), [daemon](docs/daemon.md), [sincronização direta](docs/p2p.md), [nuvem](docs/nuvem.md), [interface](docs/interface.md), [robustez](docs/robustez.md) e o [protótipo da interface](docs/design/prototipo.html).
 
 ## Compilar
 

@@ -95,7 +95,14 @@ pub struct Daemon {
 }
 
 fn log(msg: &str) {
-    eprintln!("[{}] {msg}", relicario_store::time::now() / 1000);
+    let low = msg.to_lowercase();
+    if low.contains("erro") || low.contains("falhou") || low.contains("falha ") {
+        crate::logs::error(msg);
+    } else if low.contains("conflito") || low.contains("suspeito") || low.contains("aviso") {
+        crate::logs::warn(msg);
+    } else {
+        crate::logs::info(msg);
+    }
 }
 
 impl Daemon {

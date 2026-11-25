@@ -2,6 +2,7 @@
 
 mod nuvem;
 mod pares;
+mod report;
 mod servico;
 
 use relicario_daemon::{config, games};
@@ -14,6 +15,7 @@ use relicario_store::ops::{self, Local, SnapshotOutcome};
 use relicario_store::time::format_utc;
 use relicario_store::{Repository, prune, verify};
 use relicario_transport::LocalFolder;
+use std::path::PathBuf;
 use std::process::ExitCode;
 use std::sync::Arc;
 
@@ -104,7 +106,15 @@ enum Cmd {
         refresh: bool,
     },
     /// Mostra informações do ambiente
-    Doctor,
+    Doctor {
+        /// Grava um relatório sem dados pessoais (caminhos, nomes, endereços) para anexar a
+        /// um pedido de ajuda. Nada é enviado.
+        #[arg(long)]
+        report: bool,
+        /// Onde gravar o relatório (padrão: pasta atual)
+        #[arg(long, value_name = "ARQUIVO", requires = "report")]
+        saida: Option<PathBuf>,
+    },
     /// Pedido da interface em JSON (para testes e depuração)
     #[command(hide = true)]
     Api { json: String },
@@ -282,7 +292,7 @@ fn run(cmd: Cmd) -> R<ExitCode> {
     match cmd {
         Cmd::Init { repo, name } => cmd_init(repo, name),
         Cmd::Game(g) => cmd_game(g),
-        Cmd::Doctor => cmd_doctor(),
+        Cmd::Doctor { report, saida } => cmd_doctor(report, saida),
         Cmd::Api { json } => {
             let c: relicario_daemon::api::Call =
                 serde_json::from_str(&json).map_err(|e| format!("pedido inválido: {e}"))?;
@@ -391,7 +401,7 @@ fn run(cmd: Cmd) -> R<ExitCode> {
                 Cmd::Prune => cmd_prune(&mut l),
                 Cmd::Init { .. }
                 | Cmd::Game(_)
-                | Cmd::Doctor
+                | Cmd::Doctor { .. }
                 | Cmd::Api { .. }
                 | Cmd::Scan { .. }
                 | Cmd::Manifest(_)
@@ -713,6 +723,12 @@ fn cmd_sync(cfg: &Config, l: &mut Local<'_>, games: &[String]) -> R<ExitCode> {
     for g in selected(cfg, games)? {
         let spec = g.spec()?;
         let name = g.display_name();
+        if let Some(to) = ops::recover(l, &spec).map_err(s)? {
+            println!(
+                "{name}: terminada a restauração de {} que tinha sido interrompida",
+                to.short()
+            );
+        }
         let (p, _) = ops::plan(l, &spec).map_err(s)?;
         if p.dirty && !matches!(p.action, Action::Avancar { .. } | Action::Adotar { .. }) {
             match ops::take_snapshot(l, &spec, SnapshotReason::Manual, false).map_err(s)? {
@@ -911,15 +927,19 @@ fn cmd_prune(l: &mut Local<'_>) -> R<ExitCode> {
     Ok(ExitCode::SUCCESS)
 }
 
-fn cmd_doctor() -> R<ExitCode> {
-    println!("relicario {}", env!("CARGO_PKG_VERSION"));
-    println!("sistema: {}", relicario_platform::Os::atual().nome());
-    println!("configuração: {}", config::path().display());
+fn cmd_doctor(report: bool, saida: Option<PathBuf>) -> R<ExitCode> {
+    let mut lines: Vec<String> = Vec::new();
+    macro_rules! o {
+        ($($t:tt)*) => { lines.push(format!($($t)*)) };
+    }
+    o!("relicario {}", env!("CARGO_PKG_VERSION"));
+    o!("sistema: {}", relicario_platform::Os::atual().nome());
+    o!("configuração: {}", config::path().display());
     match Config::load() {
         Ok(cfg) => {
-            println!("máquina: {} ({})", cfg.machine_name, cfg.machine_id);
-            println!("repositório: {}", cfg.repo.display());
-            println!(
+            o!("máquina: {} ({})", cfg.machine_name, cfg.machine_id);
+            o!("repositório: {}", cfg.repo.display());
+            o!(
                 "sincronização direta: {} ({} máquinas pareadas)",
                 cfg.port()
                     .map(|p| format!("porta UDP {p}"))
@@ -927,20 +947,20 @@ fn cmd_doctor() -> R<ExitCode> {
                 cfg.peers.len()
             );
             for c in &cfg.clouds {
-                println!("nuvem {}: {}", c.name, relicario_daemon::cloud::describe(c));
+                o!("nuvem {}: {}", c.name, relicario_daemon::cloud::describe(c));
             }
             if !cfg.clouds.is_empty() {
-                println!("segredos: {}", relicario_platform::secrets::backend());
+                o!("segredos: {}", relicario_platform::secrets::backend());
             }
             match open_repo(&cfg) {
-                Ok(r) => println!(
+                Ok(r) => o!(
                     "repositório abre: sim (formato v{})",
                     r.config().format_version
                 ),
-                Err(e) => println!("repositório abre: NÃO ({e})"),
+                Err(e) => o!("repositório abre: NÃO ({e})"),
             }
-            println!("jogos cadastrados à mão: {}", cfg.games.len());
-            println!(
+            o!("jogos cadastrados à mão: {}", cfg.games.len());
+            o!(
                 "detecção automática: {}",
                 if cfg.auto_detect {
                     "ligada"
@@ -949,35 +969,54 @@ fn cmd_doctor() -> R<ExitCode> {
                 }
             );
             match games::load_scan() {
-                Some(v) => println!("jogos detectados no último scan: {}", v.len()),
-                None => println!("jogos detectados: ainda não rodou `relicario scan`"),
+                Some(v) => o!("jogos detectados no último scan: {}", v.len()),
+                None => o!("jogos detectados: ainda não rodou `relicario scan`"),
             }
         }
-        Err(e) => println!("{e}"),
+        Err(e) => o!("{e}"),
     }
     let cache = relicario_catalog::manifest::Cache::default_dir();
     match cache.age() {
-        Some(a) => println!(
+        Some(a) => o!(
             "manifesto de jogos: em cache há {} dia(s)",
             a.as_secs() / 86_400
         ),
-        None => println!("manifesto de jogos: não baixado (`relicario manifest update`)"),
+        None => o!("manifesto de jogos: não baixado (`relicario manifest update`)"),
     }
     let home = relicario_platform::home_dir().unwrap_or_default();
     let d = relicario_catalog::stores::discover(&home);
     for r in &d.steam_roots {
-        println!("Steam: {}", r.display());
+        o!("Steam: {}", r.display());
     }
     let mut by: std::collections::BTreeMap<&str, usize> = Default::default();
     for i in &d.installs {
         *by.entry(i.launcher).or_default() += 1;
     }
     for (l, n) in by {
-        println!("instalados via {l}: {n}");
+        o!("instalados via {l}: {n}");
     }
     for p in &d.shared_prefixes {
-        println!("prefixo Wine: {}", p.display());
+        o!("prefixo Wine: {}", p.display());
     }
+    if !report {
+        for l in &lines {
+            println!("{l}");
+        }
+        return Ok(ExitCode::SUCCESS);
+    }
+    let text = report::build(&lines);
+    let dest = saida.unwrap_or_else(|| {
+        PathBuf::from(format!(
+            "relicario-relatorio-{}.txt",
+            relicario_store::time::format_utc(relicario_store::time::now())
+                .replace([' ', ':'], "-")
+        ))
+    });
+    std::fs::write(&dest, text).map_err(|e| format!("{}: {e}", dest.display()))?;
+    println!(
+        "relatório gravado em {} (sem caminhos, nomes nem endereços; confira antes de mandar)",
+        dest.display()
+    );
     Ok(ExitCode::SUCCESS)
 }
 

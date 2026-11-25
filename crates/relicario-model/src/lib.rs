@@ -305,6 +305,10 @@ pub struct HeadsFile {
     /// Tempo de jogo acumulado nesta máquina, em milissegundos.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub playtime: BTreeMap<GameId, u64>,
+    /// Restaurações em andamento nesta máquina: jogo e snapshot de destino. Se o processo cair no
+    /// meio, a próxima operação no jogo termina a restauração antes de qualquer outra coisa.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub restoring: BTreeMap<GameId, SnapshotId>,
     /// Jogos abertos agora nesta máquina, com o horário em que abriram.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub running: BTreeMap<GameId, Millis>,

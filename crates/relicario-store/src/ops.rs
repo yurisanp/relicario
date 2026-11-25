@@ -88,6 +88,8 @@ pub fn take_snapshot(
     reason: SnapshotReason,
     force: bool,
 ) -> Result<SnapshotOutcome> {
+    // O disco de uma restauração interrompida é uma mistura; nunca vira snapshot.
+    recover(l, game)?;
     let _lock = l.repo.lock(&l.machine, crate::lock::LockMode::Shared)?;
     let head = l.head_of(&game.id)?;
     let head_snap = head.map(|h| l.repo.get_snapshot(&h)).transpose()?;
@@ -276,15 +278,54 @@ pub fn restore(l: &mut Local<'_>, game: &GameSpec, target: SnapshotId) -> Result
             safety = Some(id);
         }
     }
-    let report = files::restore(l.repo, &tree, &game.sources)?;
+    let mut h = l.heads()?;
+    h.restoring.insert(game.id.clone(), target);
+    l.save_heads(h)?;
+    let report = finish_restore(l, game, target, &tree)?;
+    Ok(RestoreOutcome { safety, report })
+}
+
+/// Escreve a árvore no disco, confere, move o head e tira a marca de restauração em andamento.
+fn finish_restore(
+    l: &mut Local<'_>,
+    game: &GameSpec,
+    target: SnapshotId,
+    tree: &Tree,
+) -> Result<files::RestoreReport> {
+    let report = files::restore(l.repo, tree, &game.sources)?;
     let after = files::scan(&game.sources)?;
     if after.content_hash() != tree.content_hash() {
         return Err(Error::Corrupt(
             "o disco não ficou igual ao snapshot depois de restaurar".into(),
         ));
     }
-    l.set_head(&game.id, target)?;
-    Ok(RestoreOutcome { safety, report })
+    let mut h = l.heads()?;
+    h.heads.insert(
+        game.id.clone(),
+        Head {
+            snapshot: target,
+            updated_at: crate::time::now(),
+        },
+    );
+    h.restoring.remove(&game.id);
+    l.save_heads(h)?;
+    Ok(report)
+}
+
+/// Termina uma restauração que caiu no meio (processo morto, disco cheio, arquivo travado).
+/// O disco pode estar com metade dos arquivos novos; o snapshot de segurança já foi gravado
+/// antes de começar, então basta escrever de novo o destino. Devolve o destino, se havia algo.
+pub fn recover(l: &mut Local<'_>, game: &GameSpec) -> Result<Option<SnapshotId>> {
+    let Some(target) = l.heads()?.restoring.get(&game.id).copied() else {
+        return Ok(None);
+    };
+    let snap = l.repo.get_snapshot(&target)?;
+    let tree = l.repo.get_tree(&snap.tree)?;
+    {
+        let _lock = l.repo.lock(&l.machine, crate::lock::LockMode::Shared)?;
+        finish_restore(l, game, target, &tree)?;
+    }
+    Ok(Some(target))
 }
 
 /// Restauração pedida pelo usuário. Se `target` já descende do head (ou é ele), é só uma
