@@ -8,6 +8,7 @@ pub mod config;
 pub mod games;
 pub mod ipc;
 pub mod lifecycle;
+pub mod logs;
 pub mod ludusavi;
 pub mod oauth;
 pub mod p2p;

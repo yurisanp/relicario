@@ -171,6 +171,17 @@ fn sync_game_inner(
         machine: cfg.machine(),
         machine_name: cfg.machine_name.clone(),
     };
+    if let Some(to) = ops::recover(&mut l, &spec).map_err(|e| e.to_string())? {
+        crate::activity::record(
+            "restaurado",
+            Some(game.id()),
+            format!(
+                "{}: terminada a restauração de {} que tinha sido interrompida",
+                game.title(),
+                to.short()
+            ),
+        );
+    }
     let (p, _) = ops::plan(&l, &spec).map_err(|e| e.to_string())?;
     let mut saved = None;
     if p.dirty && !matches!(p.action, Action::Avancar { .. } | Action::Adotar { .. }) {
