@@ -4,7 +4,7 @@
 
 O Relicário guarda cada versão dos saves dos seus jogos, descobre sozinho qual é a mais atual entre várias máquinas e **nunca sobrescreve progresso sem guardar uma cópia antes**. É o Steam Cloud para os jogos que não têm Steam Cloud, com histórico de verdade.
 
-**Estado:** fase 1 concluída (marco M1, "funciona na CLI"). Ainda é para testes, não para seus saves de verdade; acompanhe o [roadmap](docs/roadmap.md).
+**Estado:** fases 1 e 2 concluídas (M1 "funciona na CLI" e detecção automática de jogos). Ainda é para testes, não para seus saves de verdade; acompanhe o [roadmap](docs/roadmap.md).
 
 ## Como vai funcionar
 
@@ -31,7 +31,7 @@ Plataformas da 1.0: Linux (incluindo Steam Deck), Windows e macOS.
 | [`relicario-ui`](crates/relicario-ui) | Interface em Tauri 2 (a partir da fase 6) |
 | [`relicario-plugins`](crates/relicario-plugins) | Leitores de save específicos de jogos |
 
-Documentação em [`docs/`](docs): [roadmap](docs/roadmap.md), [conectores de armazenamento](docs/conectores.md), [decisões de arquitetura](docs/adr), [formato do repositório](docs/format.md) e o [protótipo da interface](docs/design/prototipo.html).
+Documentação em [`docs/`](docs): [roadmap](docs/roadmap.md), [conectores de armazenamento](docs/conectores.md), [decisões de arquitetura](docs/adr), [formato do repositório](docs/format.md), [catálogo de jogos](docs/catalogo.md) e o [protótipo da interface](docs/design/prototipo.html).
 
 ## Compilar
 
@@ -49,7 +49,15 @@ cargo run -p relicario-cli -- doctor
 # Em cada máquina, apontando para a mesma pasta (HD externo, pasta sincronizada…)
 relicario init --repo /mnt/externo/relicario --name PC
 
-# Cadastrar um jogo à mão (a detecção automática chega na fase 2)
+# Detectar jogos: Steam (inclusive Proton), Heroic, Lutris, Wine, GOG Galaxy, Epic,
+# emuladores e qualquer jogo do manifesto do PCGamingWiki com save nesta máquina
+relicario scan
+relicario game list
+relicario game ignore algum-jogo
+relicario game exclude hookshot 'save-backups/**'
+relicario art hookshot --kind capa   # capa, banner, icone ou logo
+
+# Ou cadastrar um jogo à mão
 relicario game add hookshot --name Hookshot --path ~/.local/share/Hookshot \
   --exclude 'save-backups/**' --exclude hookshot_options.ini
 

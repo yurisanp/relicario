@@ -5,9 +5,20 @@ use std::path::Path;
 use std::process::Command;
 
 fn run(cfg: &Path, args: &[&str]) -> (i32, String) {
+    // Cada "máquina" tem a própria pasta de usuário, dados e cache.
+    let home = cfg.join("home");
+    std::fs::create_dir_all(&home).unwrap();
     let out = Command::new(env!("CARGO_BIN_EXE_relicario"))
         .args(args)
         .env("RELICARIO_CONFIG_DIR", cfg)
+        .env("RELICARIO_DATA_DIR", cfg.join("data"))
+        .env("RELICARIO_CACHE_DIR", cfg.join("cache"))
+        .env("HOME", &home)
+        .env("USERPROFILE", &home)
+        .env_remove("XDG_DATA_HOME")
+        .env_remove("XDG_CONFIG_HOME")
+        .env_remove("APPDATA")
+        .env_remove("LOCALAPPDATA")
         .output()
         .unwrap();
     let text = format!(
@@ -147,4 +158,50 @@ fn save_corrompido_nao_e_promovido() {
     assert_eq!(code, 3, "{text}");
     assert!(text.contains("virou só zeros"));
     ok(&cfg, &["snapshot", "--force"]);
+}
+
+#[test]
+fn scan_encontra_jogo_pelo_manifesto_e_emulador() {
+    let t = tempfile::tempdir().unwrap();
+    let cfg = t.path().join("cfg");
+    let home = cfg.join("home");
+    // Manifesto mínimo já em cache.
+    let manifest = r#"{"Jogo Teste":{"files":{"<home>/JogoTeste/saves":{"tags":["save"]}}}}"#;
+    fs::create_dir_all(cfg.join("cache/manifest")).unwrap();
+    fs::write(cfg.join("cache/manifest/manifest.json"), manifest).unwrap();
+    fs::create_dir_all(home.join("JogoTeste/saves")).unwrap();
+    fs::write(home.join("JogoTeste/saves/slot1.dat"), b"progresso").unwrap();
+    let ra = if cfg!(windows) {
+        "AppData/Roaming/RetroArch/saves"
+    } else if cfg!(target_os = "macos") {
+        "Library/Application Support/RetroArch/saves"
+    } else {
+        ".config/retroarch/saves"
+    };
+    fs::create_dir_all(home.join(ra)).unwrap();
+    fs::write(home.join(ra).join("zelda.srm"), b"z").unwrap();
+
+    ok(
+        &cfg,
+        &[
+            "init",
+            "--repo",
+            t.path().join("repo").to_str().unwrap(),
+            "--name",
+            "PC",
+        ],
+    );
+    let out = ok(&cfg, &["scan", "--offline"]);
+    assert!(out.contains("Jogo Teste (jogo-teste)"), "{out}");
+    assert!(out.contains("RetroArch (retroarch)"), "{out}");
+    let list = ok(&cfg, &["game", "list"]);
+    assert!(list.contains("jogo-teste"), "{list}");
+    ok(&cfg, &["snapshot", "jogo-teste"]);
+    assert!(ok(&cfg, &["log", "jogo-teste"]).contains("head de PC"));
+    ok(&cfg, &["game", "ignore", "retroarch"]);
+    assert!(!ok(&cfg, &["game", "list"]).contains("retroarch"));
+    let art = ok(&cfg, &["art", "jogo-teste"]);
+    assert!(art.contains("fonte: gerada"), "{art}");
+    let json = ok(&cfg, &["scan", "--offline", "--json"]);
+    assert!(json.trim_start().starts_with('['));
 }

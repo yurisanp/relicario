@@ -21,6 +21,7 @@ fn hookshot(save: &Path) -> GameSpec {
                 &["save-backups/**".into(), "hookshot_options.ini".into()],
             )
             .unwrap(),
+            mirrors: vec![],
         }],
     }
 }
@@ -306,4 +307,30 @@ fn snapshot_do_hookshot_em_menos_de_1s() {
         "{:?}",
         t.elapsed()
     );
+}
+
+#[test]
+fn restauracao_escreve_nos_espelhos() {
+    let tmp = tempfile::tempdir().unwrap();
+    let save = tmp.path().join("save");
+    let espelho = tmp.path().join("userdata/remote");
+    write(&save, "slot.lsv", b"v1");
+    let mut game = hookshot(&save);
+    game.sources[0].mirrors.push(espelho.clone());
+    let mut r = repo(&tmp.path().join("repo"));
+    let mut l = Local {
+        repo: &mut r,
+        machine: MachineId::new("pc"),
+        machine_name: "PC".into(),
+    };
+    let SnapshotOutcome::Created(s1) =
+        ops::take_snapshot(&mut l, &game, SnapshotReason::Manual, false).unwrap()
+    else {
+        panic!()
+    };
+    write(&save, "slot.lsv", b"v2");
+    ops::take_snapshot(&mut l, &game, SnapshotReason::Manual, false).unwrap();
+    ops::restore(&mut l, &game, s1).unwrap();
+    assert_eq!(fs::read(save.join("slot.lsv")).unwrap(), b"v1");
+    assert_eq!(fs::read(espelho.join("slot.lsv")).unwrap(), b"v1");
 }

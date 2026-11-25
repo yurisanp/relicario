@@ -64,6 +64,20 @@ pub struct Source {
     pub root: String,
     pub path: PathBuf,
     pub filter: Filter,
+    /// Outras pastas com o mesmo conteúdo (caminhos espelhados). O snapshot lê só `path`; a
+    /// restauração escreve em todas.
+    pub mirrors: Vec<PathBuf>,
+}
+
+impl Source {
+    pub fn new(root: impl Into<String>, path: impl Into<PathBuf>, filter: Filter) -> Self {
+        Source {
+            root: root.into(),
+            path: path.into(),
+            filter,
+            mirrors: vec![],
+        }
+    }
 }
 
 /// Arquivos de uma raiz que passam no filtro, em ordem. Links simbólicos são ignorados.
@@ -235,7 +249,18 @@ pub struct RestoreReport {
 /// Quem chama é responsável por ter tirado o snapshot de segurança antes.
 pub fn restore(repo: &Repository, tree: &Tree, sources: &[Source]) -> Result<RestoreReport> {
     let mut report = RestoreReport::default();
-    for src in sources {
+    let expanded: Vec<Source> = sources
+        .iter()
+        .flat_map(|s| {
+            std::iter::once(s.clone()).chain(s.mirrors.iter().map(|m| Source {
+                root: s.root.clone(),
+                path: m.clone(),
+                filter: s.filter.clone(),
+                mirrors: vec![],
+            }))
+        })
+        .collect();
+    for src in &expanded {
         let wanted: Vec<&FileEntry> = tree.files.iter().filter(|f| f.root == src.root).collect();
         let keep: BTreeSet<&str> = wanted.iter().map(|f| f.path.as_str()).collect();
         for f in &wanted {
