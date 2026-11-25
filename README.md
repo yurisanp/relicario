@@ -4,7 +4,7 @@
 
 O Relicário guarda cada versão dos saves dos seus jogos, descobre sozinho qual é a mais atual entre várias máquinas e **nunca sobrescreve progresso sem guardar uma cópia antes**. É o Steam Cloud para os jogos que não têm Steam Cloud, com histórico de verdade.
 
-**Estado:** fase 0 (fundação). Ainda não há nada para usar; acompanhe o [roadmap](docs/roadmap.md).
+**Estado:** fase 1 concluída (marco M1, "funciona na CLI"). Ainda é para testes, não para seus saves de verdade; acompanhe o [roadmap](docs/roadmap.md).
 
 ## Como vai funcionar
 
@@ -35,12 +35,32 @@ Documentação em [`docs/`](docs): [roadmap](docs/roadmap.md), [conectores de ar
 
 ## Compilar
 
-Requer Rust estável (1.85 ou mais novo).
+Requer Rust estável (1.88 ou mais novo).
 
 ```sh
 cargo build --workspace
 cargo test --workspace
 cargo run -p relicario-cli -- doctor
+```
+
+## Uso pela linha de comando
+
+```sh
+# Em cada máquina, apontando para a mesma pasta (HD externo, pasta sincronizada…)
+relicario init --repo /mnt/externo/relicario --name PC
+
+# Cadastrar um jogo à mão (a detecção automática chega na fase 2)
+relicario game add hookshot --name Hookshot --path ~/.local/share/Hookshot \
+  --exclude 'save-backups/**' --exclude hookshot_options.ini
+
+relicario snapshot          # guarda o estado atual
+relicario plan              # mostra o que mudou em cada máquina
+relicario sync              # guarda o que mudou aqui e traz o que está mais novo lá
+relicario log hookshot      # histórico
+relicario restore hookshot 3f2a9c   # volta para um ponto (o estado atual é guardado antes)
+relicario pin 3f2a9c --name "antes do chefe"
+relicario verify --read-data
+relicario prune             # aplica a retenção e libera espaço
 ```
 
 ## Contribuir

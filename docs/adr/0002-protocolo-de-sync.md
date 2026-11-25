@@ -1,6 +1,6 @@
 # ADR 0002: sincronização por ancestralidade de snapshots
 
-- **Estado:** proposto (revisar na fase 0)
+- **Estado:** aceito (aprovado em 2026-11-24)
 - **Data:** 2026-11-24
 
 ## Contexto

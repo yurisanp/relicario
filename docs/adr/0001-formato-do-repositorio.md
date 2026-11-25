@@ -1,6 +1,6 @@
 # ADR 0001: repositório de blocos próprio, endereçado por conteúdo
 
-- **Estado:** proposto (revisar na fase 0)
+- **Estado:** aceito (aprovado em 2026-11-24)
 - **Data:** 2026-11-24
 
 ## Contexto
