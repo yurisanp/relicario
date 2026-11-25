@@ -1,6 +1,6 @@
 # ADR 0004: criptografia ligada por padrão na nuvem, com chave de recuperação
 
-- **Estado:** proposto (revisar na fase 0)
+- **Estado:** aceito (aprovado em 2026-11-24)
 - **Data:** 2026-11-24
 
 ## Contexto

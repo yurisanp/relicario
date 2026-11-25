@@ -5,7 +5,7 @@ members = ["crates/*"]
 [workspace.package]
 version = "0.0.1"
 edition = "2024"
-rust-version = "1.85"
+rust-version = "1.88"
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/yurisanp/relicario"
 authors = ["Os autores do Relicário"]
@@ -21,6 +21,19 @@ relicario-transport = { path = "crates/relicario-transport" }
 relicario-platform = { path = "crates/relicario-platform" }
 relicario-daemon = { path = "crates/relicario-daemon" }
 relicario-plugins = { path = "crates/relicario-plugins" }
+
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+blake3 = "1"
+zstd = "0.13"
+fastcdc = "3"
+globset = "0.4"
+toml = "0.8"
+clap = { version = "4.5", features = ["derive"] }
+getrandom = "0.3"
+proptest = "1"
+tempfile = "3"
 
 [workspace.lints.rust]
 unsafe_code = "forbid"

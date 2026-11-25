@@ -1,6 +1,6 @@
 # ADR 0003: interface em Tauri 2
 
-- **Estado:** proposto (revisar na fase 0)
+- **Estado:** aceito (aprovado em 2026-11-24)
 - **Data:** 2026-11-24
 
 ## Contexto

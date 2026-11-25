@@ -46,12 +46,12 @@ jobs:
       - run: cargo run -p relicario-cli -- doctor
 
   msrv:
-    name: Versão mínima do Rust (1.85)
+    name: Versão mínima do Rust (1.88)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@1.85
-      - run: cargo +1.85 check --workspace --all-targets
+      - uses: dtolnay/rust-toolchain@1.88
+      - run: cargo +1.88 check --workspace --all-targets
 
   deny:
     name: Licenças e vulnerabilidades
