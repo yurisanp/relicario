@@ -86,4 +86,14 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/v')
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "$GITHUB_REF_NAME" dist/* --draft --title "$GITHUB_REF_NAME" --notes "Rascunho gerado pelo CI."
+        run: |
+          # Se o release já existe (criado pela página de Releases junto com a tag), só anexa
+          # os arquivos; senão cria um rascunho com as notas da versão no CHANGELOG.
+          if gh release view "$GITHUB_REF_NAME" > /dev/null 2>&1; then
+            gh release upload "$GITHUB_REF_NAME" dist/* --clobber
+          else
+            v="${GITHUB_REF_NAME#v}"
+            awk -v v="$v" '$0 ~ "^## \\[" v "\\]" {on=1; next} on && /^## \[/ {exit} on' CHANGELOG.md > notas.md
+            test -s notas.md || echo "Rascunho gerado pelo CI." > notas.md
+            gh release create "$GITHUB_REF_NAME" dist/* --draft --title "Relicário $v" --notes-file notas.md
+          fi
