@@ -281,7 +281,9 @@ fn tray(app: &AppHandle, state: Arc<App>) -> tauri::Result<()> {
 }
 
 fn main() {
-    let hidden = std::env::args().any(|a| a == "--hidden" || a == "--bandeja");
+    // No modo Jogo do Steam Deck a tela é do Steam: o app fica só na bandeja, sem janela.
+    let hidden = std::env::args().any(|a| a == "--hidden" || a == "--bandeja")
+        || relicario_platform::deck::detect().game_mode;
     let state = Arc::new(App::default());
     tauri::Builder::default()
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {

@@ -4323,6 +4323,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "relicario-restore"
+version = "0.0.1"
+dependencies = [
+ "clap",
+ "relicario-model",
+ "relicario-store",
+ "relicario-transport",
+ "rpassword",
+ "tempfile",
+]
+
+[[package]]
 name = "relicario-store"
 version = "0.0.1"
 dependencies = [
