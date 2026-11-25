@@ -1,6 +1,7 @@
 //! `relicario`: linha de comando.
 
 mod config;
+mod games;
 
 use clap::{Parser, Subcommand};
 use config::{Config, GameConfig, RootConfig};
@@ -75,8 +76,42 @@ enum Cmd {
     },
     /// Aplica a retenção e libera espaço
     Prune,
+    /// Procura jogos instalados e pastas de save nesta máquina
+    Scan {
+        /// Saída em JSON
+        #[arg(long)]
+        json: bool,
+        /// Não tentar atualizar o manifesto pela rede
+        #[arg(long)]
+        offline: bool,
+    },
+    /// Manifesto de jogos (Ludusavi/PCGamingWiki)
+    #[command(subcommand)]
+    Manifest(ManifestCmd),
+    /// Arte de um jogo (capa, banner, ícone, logo)
+    Art {
+        game: String,
+        #[arg(long, default_value = "capa")]
+        kind: String,
+        /// Trocar pela imagem deste arquivo
+        #[arg(long)]
+        set: Option<String>,
+        /// Esquecer a arte em cache e buscar de novo
+        #[arg(long)]
+        refresh: bool,
+    },
     /// Mostra informações do ambiente
     Doctor,
+}
+
+#[derive(Subcommand)]
+enum ManifestCmd {
+    /// Baixa o manifesto se mudou
+    Update {
+        /// Baixar mesmo se o cache for recente
+        #[arg(long)]
+        force: bool,
+    },
 }
 
 #[derive(Subcommand)]
@@ -105,6 +140,12 @@ enum GameCmd {
     List,
     /// Remove o cadastro (não apaga nada do repositório nem do disco)
     Remove { id: String },
+    /// Ignora um jogo detectado automaticamente
+    Ignore { id: String },
+    /// Volta a considerar um jogo ignorado
+    Unignore { id: String },
+    /// Ignora arquivos de um jogo (padrão relativo à pasta de save, por exemplo `backup/**`)
+    Exclude { id: String, pattern: String },
 }
 
 fn main() -> ExitCode {
@@ -131,11 +172,14 @@ fn open_repo(cfg: &Config) -> R<Repository> {
     .map_err(s)
 }
 
-fn selected<'a>(cfg: &'a Config, names: &[String]) -> R<Vec<&'a GameConfig>> {
+fn selected(cfg: &Config, names: &[String]) -> R<Vec<GameConfig>> {
     if names.is_empty() {
-        Ok(cfg.games.iter().collect())
+        Ok(games::all(cfg)?.into_iter().map(|g| g.config).collect())
     } else {
-        names.iter().map(|n| cfg.game(n)).collect()
+        names
+            .iter()
+            .map(|n| games::find(cfg, n).map(|g| g.config))
+            .collect()
     }
 }
 
@@ -165,6 +209,28 @@ fn run(cmd: Cmd) -> R<ExitCode> {
         Cmd::Init { repo, name } => cmd_init(repo, name),
         Cmd::Game(g) => cmd_game(g),
         Cmd::Doctor => cmd_doctor(),
+        Cmd::Scan { json, offline } => cmd_scan(json, offline),
+        Cmd::Manifest(ManifestCmd::Update { force }) => {
+            let cache = relicario_catalog::manifest::Cache::default_dir();
+            let out = relicario_catalog::manifest::update(&cache, force).map_err(s)?;
+            println!(
+                "{}",
+                match out {
+                    relicario_catalog::manifest::UpdateOutcome::Fresh =>
+                        "manifesto em dia (conferido há menos de uma semana)",
+                    relicario_catalog::manifest::UpdateOutcome::NotModified => "manifesto em dia",
+                    relicario_catalog::manifest::UpdateOutcome::Downloaded =>
+                        "manifesto atualizado",
+                }
+            );
+            Ok(ExitCode::SUCCESS)
+        }
+        Cmd::Art {
+            game,
+            kind,
+            set,
+            refresh,
+        } => cmd_art(game, kind, set, refresh),
         other => {
             let cfg = Config::load()?;
             let mut repo = open_repo(&cfg)?;
@@ -196,7 +262,14 @@ fn run(cmd: Cmd) -> R<ExitCode> {
                 }
                 Cmd::Verify { read_data } => cmd_verify(&l, read_data),
                 Cmd::Prune => cmd_prune(&mut l),
-                Cmd::Init { .. } | Cmd::Game(_) | Cmd::Doctor => unreachable!(),
+                Cmd::Init { .. }
+                | Cmd::Game(_)
+                | Cmd::Doctor
+                | Cmd::Scan { .. }
+                | Cmd::Manifest(_)
+                | Cmd::Art { .. } => {
+                    unreachable!()
+                }
             }
         }
     }
@@ -223,6 +296,9 @@ fn cmd_init(repo: String, name: Option<String>) -> R<ExitCode> {
                 machine_name: n,
                 repo: path.clone(),
                 games: vec![],
+                auto_detect: true,
+                rules: vec![],
+                steamgriddb_key: None,
             }
         }
     };
@@ -261,6 +337,7 @@ fn cmd_game(g: GameCmd) -> R<ExitCode> {
                 path,
                 include,
                 exclude,
+                mirrors: vec![],
             };
             match entry {
                 Some(gc) => {
@@ -280,13 +357,24 @@ fn cmd_game(g: GameCmd) -> R<ExitCode> {
             println!("jogo {id} cadastrado");
         }
         GameCmd::List => {
-            if cfg.games.is_empty() {
-                println!("nenhum jogo cadastrado; use `relicario game add`");
+            let all = games::all(&cfg)?;
+            if all.is_empty() {
+                println!(
+                    "nenhum jogo encontrado; rode `relicario scan` ou use `relicario game add`"
+                );
             }
-            for g in &cfg.games {
-                println!("{} ({})", g.display_name(), g.id);
+            for game in &all {
+                let g = &game.config;
+                let origem = match &game.detected {
+                    Some(d) => d.launcher.clone().unwrap_or_else(|| d.source.clone()),
+                    None => "manual".into(),
+                };
+                println!("{} ({}) [{origem}]", g.display_name(), g.id);
                 for r in &g.roots {
                     println!("  {}: {}", r.name, r.path);
+                    for m in &r.mirrors {
+                        println!("    espelho: {m}");
+                    }
                     if !r.include.is_empty() {
                         println!("    inclui: {}", r.include.join(", "));
                     }
@@ -304,6 +392,43 @@ fn cmd_game(g: GameCmd) -> R<ExitCode> {
             }
             cfg.save()?;
             println!("jogo {id} removido do cadastro (o histórico continua no repositório)");
+        }
+        GameCmd::Ignore { id } => {
+            if !cfg.rules.iter().any(|r| r.game == id && r.ignore) {
+                cfg.rules.push(relicario_catalog::rules::Rule {
+                    game: id.clone(),
+                    ignore: true,
+                    ..Default::default()
+                });
+            }
+            cfg.save()?;
+            games::rescan(&cfg, false, true)?;
+            println!("{id} ignorado");
+        }
+        GameCmd::Unignore { id } => {
+            cfg.rules.retain(|r| !(r.game == id && r.ignore));
+            cfg.save()?;
+            games::rescan(&cfg, false, true)?;
+            println!("{id} volta a ser considerado");
+        }
+        GameCmd::Exclude { id, pattern } => {
+            relicario_store::Filter::new(&[], std::slice::from_ref(&pattern)).map_err(s)?;
+            match cfg.rules.iter_mut().find(|r| r.game == id && !r.ignore) {
+                Some(r) => r.exclude.push(pattern.clone()),
+                None => cfg.rules.push(relicario_catalog::rules::Rule {
+                    game: id.clone(),
+                    exclude: vec![pattern.clone()],
+                    ..Default::default()
+                }),
+            }
+            if let Some(g) = cfg.games.iter_mut().find(|g| g.id == id) {
+                for r in &mut g.roots {
+                    r.exclude.push(pattern.clone());
+                }
+            }
+            cfg.save()?;
+            games::rescan(&cfg, false, true)?;
+            println!("{id}: ignorando {pattern}");
         }
     }
     Ok(ExitCode::SUCCESS)
@@ -468,7 +593,7 @@ fn cmd_restore(
     game: &str,
     snapshot: Option<String>,
 ) -> R<ExitCode> {
-    let g = cfg.game(game)?;
+    let g = games::find(cfg, game)?.config;
     let spec = g.spec()?;
     let target = match snapshot {
         Some(p) => resolve(l.repo, &p)?,
@@ -504,7 +629,7 @@ fn cmd_restore(
 }
 
 fn cmd_log(cfg: &Config, l: &Local<'_>, game: &str) -> R<ExitCode> {
-    let g = cfg.game(game)?;
+    let g = games::find(cfg, game)?.config;
     let snaps = ops::game_snapshots(l.repo, &relicario_model::GameId::new(&g.id)).map_err(s)?;
     let heads = l.repo.heads().map_err(s)?;
     let mut names = std::collections::HashMap::new();
@@ -622,9 +747,138 @@ fn cmd_doctor() -> R<ExitCode> {
                 ),
                 Err(e) => println!("repositório abre: NÃO ({e})"),
             }
-            println!("jogos cadastrados: {}", cfg.games.len());
+            println!("jogos cadastrados à mão: {}", cfg.games.len());
+            println!(
+                "detecção automática: {}",
+                if cfg.auto_detect {
+                    "ligada"
+                } else {
+                    "desligada"
+                }
+            );
+            match games::load_scan() {
+                Some(v) => println!("jogos detectados no último scan: {}", v.len()),
+                None => println!("jogos detectados: ainda não rodou `relicario scan`"),
+            }
         }
         Err(e) => println!("{e}"),
+    }
+    let cache = relicario_catalog::manifest::Cache::default_dir();
+    match cache.age() {
+        Some(a) => println!(
+            "manifesto de jogos: em cache há {} dia(s)",
+            a.as_secs() / 86_400
+        ),
+        None => println!("manifesto de jogos: não baixado (`relicario manifest update`)"),
+    }
+    let home = relicario_platform::home_dir().unwrap_or_default();
+    let d = relicario_catalog::stores::discover(&home);
+    for r in &d.steam_roots {
+        println!("Steam: {}", r.display());
+    }
+    let mut by: std::collections::BTreeMap<&str, usize> = Default::default();
+    for i in &d.installs {
+        *by.entry(i.launcher).or_default() += 1;
+    }
+    for (l, n) in by {
+        println!("instalados via {l}: {n}");
+    }
+    for p in &d.shared_prefixes {
+        println!("prefixo Wine: {}", p.display());
+    }
+    Ok(ExitCode::SUCCESS)
+}
+
+fn cmd_scan(json: bool, offline: bool) -> R<ExitCode> {
+    let cfg = Config::load()?;
+    let started = std::time::Instant::now();
+    let found = games::rescan(&cfg, !offline, json)?;
+    if json {
+        println!("{}", serde_json::to_string_pretty(&found).map_err(s)?);
+        return Ok(ExitCode::SUCCESS);
+    }
+    for g in &found {
+        let mut flags = Vec::new();
+        if let Some(l) = &g.launcher {
+            flags.push(l.clone());
+        }
+        if g.prefix.is_some() {
+            flags.push("Proton/Wine".into());
+        }
+        if g.steam_cloud {
+            flags.push("Steam Cloud".into());
+        }
+        if g.roots.iter().any(|r| !r.mirrors.is_empty()) {
+            flags.push("espelhado".into());
+        }
+        println!(
+            "{} ({})  {}  {}",
+            g.title,
+            g.id,
+            human(g.size()),
+            flags.join(", ")
+        );
+        for r in &g.roots {
+            println!("  {}: {} ({} arquivos)", r.name, r.path.display(), r.files);
+        }
+    }
+    println!(
+        "{} jogos em {:.1} s",
+        found.len(),
+        started.elapsed().as_secs_f32()
+    );
+    Ok(ExitCode::SUCCESS)
+}
+
+fn cmd_art(game: String, kind: String, set: Option<String>, refresh: bool) -> R<ExitCode> {
+    use relicario_catalog::art::{ArtCache, ArtKind, ArtQuery};
+    let cfg = Config::load()?;
+    let g = games::find(&cfg, &game)?;
+    let kind = match kind.as_str() {
+        "capa" => ArtKind::Capa,
+        "banner" => ArtKind::Banner,
+        "icone" | "ícone" => ArtKind::Icone,
+        "logo" => ArtKind::Logo,
+        k => {
+            return Err(format!(
+                "tipo de arte desconhecido: {k} (use capa, banner, icone ou logo)"
+            ));
+        }
+    };
+    let home = relicario_platform::home_dir().unwrap_or_default();
+    let mut cache = ArtCache::new(ArtCache::default_dir());
+    cache.steam_roots = relicario_catalog::stores::discover(&home).steam_roots;
+    cache.lutris_dirs = vec![home.join(".local/share/lutris")];
+    cache.steamgriddb_key = cfg.steamgriddb_key.clone();
+    let d = g.detected.as_ref();
+    let q = ArtQuery {
+        id: g.id().to_string(),
+        title: g.title().to_string(),
+        steam_appid: d
+            .filter(|d| d.store.as_deref() == Some("steam"))
+            .and_then(|d| d.store_id.as_ref())
+            .and_then(|i| i.parse().ok()),
+        gog_id: d
+            .filter(|d| d.store.as_deref() == Some("gog"))
+            .and_then(|d| d.store_id.as_ref())
+            .and_then(|i| i.parse().ok()),
+        lutris_slug: d
+            .filter(|d| d.launcher.as_deref() == Some("lutris"))
+            .and_then(|d| d.store_id.clone()),
+    };
+    if refresh {
+        cache.clear(&q.id, kind);
+    }
+    let info = match set {
+        Some(f) => cache
+            .set_override(&q.id, kind, &relicario_platform::expand_home(&f))
+            .map_err(s)?,
+        None => cache.get(&q, kind).map_err(s)?,
+    };
+    println!("{}", info.path.display());
+    println!("fonte: {}", info.source);
+    if let Some(a) = info.author {
+        println!("autor: {a} (via SteamGridDB)");
     }
     Ok(ExitCode::SUCCESS)
 }

@@ -12,8 +12,23 @@ pub struct Config {
     pub machine_name: String,
     /// Pasta do repositório (destino "pasta local").
     pub repo: PathBuf,
+    /// Jogos cadastrados à mão. Ganham dos detectados com o mesmo id.
     #[serde(default)]
     pub games: Vec<GameConfig>,
+    /// Detectar jogos automaticamente (lojas, manifesto, emuladores).
+    #[serde(default = "yes")]
+    pub auto_detect: bool,
+    /// Regras locais por jogo (ignorar arquivos, ignorar o jogo, pastas extras).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub rules: Vec<relicario_catalog::rules::Rule>,
+    /// Chave de API do SteamGridDB, para a arte dos jogos (vai para o chaveiro do sistema na
+    /// fase 5).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub steamgriddb_key: Option<String>,
+}
+
+fn yes() -> bool {
+    true
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -35,6 +50,9 @@ pub struct RootConfig {
     pub include: Vec<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub exclude: Vec<String>,
+    /// Pastas espelhadas (mesmo conteúdo), restauradas junto.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub mirrors: Vec<String>,
 }
 
 pub fn path() -> PathBuf {
@@ -70,13 +88,6 @@ impl Config {
     pub fn machine(&self) -> MachineId {
         MachineId::new(&self.machine_id)
     }
-
-    pub fn game(&self, id: &str) -> Result<&GameConfig, String> {
-        self.games
-            .iter()
-            .find(|g| g.id == id)
-            .ok_or_else(|| format!("jogo {id:?} não cadastrado; veja `relicario game list`"))
-    }
 }
 
 impl GameConfig {
@@ -87,6 +98,11 @@ impl GameConfig {
                 root: r.name.clone(),
                 path: relicario_platform::expand_home(&r.path),
                 filter: Filter::new(&r.include, &r.exclude).map_err(|e| e.to_string())?,
+                mirrors: r
+                    .mirrors
+                    .iter()
+                    .map(|m| relicario_platform::expand_home(m))
+                    .collect(),
             });
         }
         Ok(GameSpec {
