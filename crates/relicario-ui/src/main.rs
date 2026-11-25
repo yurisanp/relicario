@@ -280,7 +280,38 @@ fn tray(app: &AppHandle, state: Arc<App>) -> tauri::Result<()> {
     Ok(())
 }
 
+/// O WebKitGTK com o renderizador DMA-BUF desenha só parte da janela nos drivers da NVIDIA
+/// (o conteúdo fica cortado no tamanho em que a janela abriu e pedaços aparecem soltos). A
+/// variável que desliga esse renderizador precisa existir antes de o WebKit carregar, e mudar o
+/// ambiente do próprio processo exige `unsafe`; então o app se reabre uma vez com ela.
+/// `RELICARIO_WEBKIT_DMABUF=1` mantém o renderizador padrão.
+#[cfg(target_os = "linux")]
+fn reabrir_sem_dmabuf() {
+    const MARCA: &str = "RELICARIO_WEBKIT_REABERTO";
+    let nvidia = std::path::Path::new("/proc/driver/nvidia/version").exists();
+    if !nvidia
+        || std::env::var_os("WEBKIT_DISABLE_DMABUF_RENDERER").is_some()
+        || std::env::var_os("RELICARIO_WEBKIT_DMABUF").is_some()
+        || std::env::var_os(MARCA).is_some()
+    {
+        return;
+    }
+    let Ok(exe) = std::env::current_exe() else {
+        return;
+    };
+    let status = std::process::Command::new(exe)
+        .args(std::env::args_os().skip(1))
+        .env("WEBKIT_DISABLE_DMABUF_RENDERER", "1")
+        .env(MARCA, "1")
+        .status();
+    if let Ok(status) = status {
+        std::process::exit(status.code().unwrap_or(1));
+    }
+}
+
 fn main() {
+    #[cfg(target_os = "linux")]
+    reabrir_sem_dmabuf();
     // No modo Jogo do Steam Deck a tela é do Steam: o app fica só na bandeja, sem janela.
     let hidden = std::env::args().any(|a| a == "--hidden" || a == "--bandeja")
         || relicario_platform::deck::detect().game_mode;

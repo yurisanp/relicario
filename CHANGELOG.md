@@ -6,6 +6,7 @@ O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e as
 
 ### Corrigido
 - O AppImage não abria em distribuições com glib recente (CachyOS, Arch): faltava no pacote a biblioteca da bandeja, e o app usava a do sistema, incompatível com a glib embutida. O CI agora confere que ela está no pacote.
+- Com placa NVIDIA, a janela aparecia cortada (conteúdo preso ao tamanho inicial e botões soltos fora do cartão). O app agora desliga o renderizador DMA-BUF do WebKitGTK nesses drivers; `RELICARIO_WEBKIT_DMABUF=1` volta ao padrão.
 
 ## [1.0.0] - 2026-11-25
 
