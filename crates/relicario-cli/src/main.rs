@@ -1,5 +1,6 @@
 //! `relicario`: linha de comando.
 
+mod pares;
 mod servico;
 
 use relicario_daemon::{config, games};
@@ -130,6 +131,20 @@ enum Cmd {
     /// Executáveis desconhecidos vistos rodando
     #[command(subcommand)]
     Apps(servico::AppsCmd),
+    /// Pareia com outra máquina para sincronizar direto, sem nuvem
+    Pair {
+        /// Código mostrado na outra máquina (sem ele, esta máquina mostra um código)
+        code: Vec<String>,
+        /// Endereço da outra máquina, se a rede local não achar sozinha
+        #[arg(long)]
+        addr: Option<String>,
+        /// Quanto tempo esperar, em segundos
+        #[arg(long, default_value_t = 300)]
+        wait: u64,
+    },
+    /// Máquinas pareadas
+    #[command(subcommand)]
+    Peers(pares::PeersCmd),
 }
 
 #[derive(Subcommand)]
@@ -265,8 +280,33 @@ fn run(cmd: Cmd) -> R<ExitCode> {
         Cmd::Launcher(c) => servico::cmd_launcher(c),
         Cmd::Associate { game, exe } => servico::cmd_associate(game, exe),
         Cmd::Apps(c) => servico::cmd_apps(c),
+        Cmd::Pair { code, addr, wait } => {
+            let code: String = code
+                .concat()
+                .chars()
+                .filter(|c| c.is_ascii_digit())
+                .collect();
+            pares::cmd_pair((!code.is_empty()).then_some(code), addr, wait)
+        }
+        Cmd::Peers(c) => pares::cmd_peers(c),
         other => {
             let cfg = Config::load()?;
+            if matches!(other, Cmd::Sync { .. } | Cmd::Plan { .. }) && !cfg.peers.is_empty() {
+                // Traz o que as máquinas pareadas fizeram antes de decidir.
+                let msgs = if relicario_daemon::ipc::is_up() {
+                    match relicario_daemon::ipc::request(&relicario_daemon::ipc::Request::PeersSync)
+                    {
+                        Ok(relicario_daemon::ipc::Response::Ok { messages }) => messages,
+                        _ => vec![],
+                    }
+                } else {
+                    relicario_daemon::p2p::sync_peers(&cfg, &[], std::time::Duration::from_secs(3))
+                        .into_iter()
+                        .map(|p| p.message)
+                        .collect()
+                };
+                msgs.iter().for_each(|m| eprintln!("{m}"));
+            }
             let mut repo = open_repo(&cfg)?;
             let mut l = Local {
                 repo: &mut repo,
@@ -307,7 +347,9 @@ fn run(cmd: Cmd) -> R<ExitCode> {
                 | Cmd::Service(_)
                 | Cmd::Launcher(_)
                 | Cmd::Associate { .. }
-                | Cmd::Apps(_) => {
+                | Cmd::Apps(_)
+                | Cmd::Pair { .. }
+                | Cmd::Peers(_) => {
                     unreachable!()
                 }
             }
@@ -340,6 +382,8 @@ fn cmd_init(repo: String, name: Option<String>) -> R<ExitCode> {
                 rules: vec![],
                 steamgriddb_key: None,
                 periodic_secs: None,
+                peers: vec![],
+                p2p_port: None,
             }
         }
     };

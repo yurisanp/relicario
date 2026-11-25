@@ -28,9 +28,31 @@ pub struct Config {
     /// Intervalo da conferência periódica, em segundos (padrão: 1 hora).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub periodic_secs: Option<u64>,
+    /// Máquinas pareadas para sincronização direta.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub peers: Vec<relicario_p2p::Peer>,
+    /// Porta UDP da sincronização direta (padrão 47321; 0 desliga o servidor).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub p2p_port: Option<u16>,
 }
 
 impl Config {
+    pub fn repo_path(&self) -> PathBuf {
+        relicario_platform::expand_home(&self.repo.to_string_lossy())
+    }
+
+    /// Porta da sincronização direta; `None` se desligada.
+    pub fn port(&self) -> Option<u16> {
+        let env = std::env::var("RELICARIO_P2P_PORT")
+            .ok()
+            .and_then(|v| v.parse().ok());
+        match env.or(self.p2p_port) {
+            Some(0) => None,
+            Some(p) => Some(p),
+            None => Some(relicario_p2p::DEFAULT_PORT),
+        }
+    }
+
     /// Repositório desta configuração.
     pub fn open_repo(&self) -> Result<relicario_store::Repository, String> {
         let p = relicario_platform::expand_home(&self.repo.to_string_lossy());

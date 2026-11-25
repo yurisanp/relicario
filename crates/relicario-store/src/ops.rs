@@ -47,7 +47,8 @@ impl Local<'_> {
     fn save_heads(&mut self, mut h: HeadsFile) -> Result<()> {
         h.machine = Some(self.machine.clone());
         h.machine_name = self.machine_name.clone();
-        h.updated_at = crate::time::now();
+        // Sempre cresce, mesmo com o relógio voltando: a replicação fica com o maior.
+        h.updated_at = crate::time::now().max(h.updated_at + 1);
         let m = self.machine.clone();
         self.repo.put_heads(&m, &h)
     }
@@ -327,6 +328,16 @@ pub fn set_running(l: &mut Local<'_>, game: &GameId, since: Option<i64>) -> Resu
 pub fn add_playtime(l: &mut Local<'_>, game: &GameId, ms: u64) -> Result<()> {
     let mut h = l.heads()?;
     *h.playtime.entry(game.clone()).or_default() += ms;
+    l.save_heads(h)
+}
+
+/// Publica os endereços desta máquina (o "cartão de visita" para a sincronização direta).
+pub fn set_addresses(l: &mut Local<'_>, addrs: Vec<String>) -> Result<()> {
+    let mut h = l.heads()?;
+    if h.addresses == addrs {
+        return Ok(());
+    }
+    h.addresses = addrs;
     l.save_heads(h)
 }
 

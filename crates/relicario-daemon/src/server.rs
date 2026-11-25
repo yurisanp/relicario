@@ -11,7 +11,8 @@ use relicario_model::{GameId, SnapshotReason};
 use relicario_store::ops::{self, Local};
 use relicario_watch::{Event, Watcher};
 use std::collections::{BTreeMap, BTreeSet};
-use std::sync::{Arc, Mutex};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex, RwLock};
 use std::time::{Duration, Instant};
 
 fn env_ms(name: &str, default: u64) -> Duration {
@@ -29,6 +30,7 @@ pub struct Timing {
     pub poll: Duration,
     pub periodic: Duration,
     pub rescan: Duration,
+    pub p2p: Duration,
 }
 
 impl Timing {
@@ -40,6 +42,7 @@ impl Timing {
                 .map(|s| Duration::from_secs(s.max(60)))
                 .unwrap_or_else(|| env_ms("RELICARIO_PERIODIC_MS", 3_600_000)),
             rescan: env_ms("RELICARIO_RESCAN_MS", 6 * 3_600_000),
+            p2p: env_ms("RELICARIO_P2P_MS", 60_000),
         }
     }
 }
@@ -57,11 +60,27 @@ struct Inner {
     libraries: Vec<std::path::PathBuf>,
 }
 
+/// Máquinas achadas por mDNS: (id, endereços).
+type Discovered = Vec<(String, Vec<std::net::SocketAddr>)>;
+
+/// Sincronização direta: servidor, anúncio na rede e o que foi descoberto.
+#[derive(Debug)]
+struct P2p {
+    server: relicario_p2p::Server,
+    peers: Arc<RwLock<Vec<relicario_p2p::Peer>>>,
+    _advert: Option<relicario_p2p::discovery::Advert>,
+    discovered: Arc<Mutex<Discovered>>,
+    last_paired: Arc<Mutex<Option<String>>>,
+}
+
 /// O daemon. `work` serializa as operações no repositório desta máquina.
 #[derive(Debug)]
 pub struct Daemon {
     inner: Mutex<Inner>,
     work: Mutex<()>,
+    p2p: Mutex<Option<P2p>>,
+    /// Um par gravou um head novo aqui: vale conferir os jogos.
+    remote_changed: Arc<AtomicBool>,
 }
 
 fn log(msg: &str) {
@@ -89,7 +108,91 @@ impl Daemon {
                 libraries: games::library_dirs(&home),
             }),
             work: Mutex::new(()),
+            p2p: Mutex::new(None),
+            remote_changed: Arc::new(AtomicBool::new(false)),
         }))
+    }
+
+    /// Liga o servidor da sincronização direta e o anúncio por mDNS.
+    pub fn start_p2p(&self) -> Result<(), String> {
+        let cfg = self.inner.lock().expect("lock").cfg.clone();
+        let Some(port) = cfg.port() else {
+            return Ok(());
+        };
+        let id = crate::p2p::identity()?;
+        let peers = Arc::new(RwLock::new(cfg.peers.clone()));
+        let last_paired = Arc::new(Mutex::new(None));
+        let changed = self.remote_changed.clone();
+        let (pp, lp) = (peers.clone(), last_paired.clone());
+        let opts = relicario_p2p::ServerOptions {
+            machine: cfg.machine_id.clone(),
+            name: cfg.machine_name.clone(),
+            repo: Arc::new(relicario_transport::LocalFolder::new(cfg.repo_path())),
+            peers: peers.clone(),
+            on_heads: Some(Arc::new(move |_m: String| {
+                changed.store(true, Ordering::SeqCst)
+            })),
+            on_paired: Some(Arc::new(move |p: relicario_p2p::Peer| {
+                log(&format!("pareado com {}", p.name));
+                *lp.lock().expect("lock") = Some(p.name.clone());
+                if let Ok(c) = crate::p2p::save_peer(p) {
+                    *pp.write().expect("lock") = c.peers;
+                }
+            })),
+        };
+        let server = relicario_p2p::Server::start_any(&id, port, opts)
+            .map_err(|e| format!("porta UDP {port}: {e}"))?;
+        log(&format!(
+            "sincronização direta na porta UDP {}",
+            server.port()
+        ));
+        let advert = relicario_p2p::discovery::advertise(
+            &cfg.machine_id,
+            &cfg.machine_name,
+            &id.fingerprint,
+            server.port(),
+            false,
+        )
+        .map_err(|e| log(&format!("mDNS indisponível: {e}")))
+        .ok();
+        crate::p2p::publish_card(&cfg);
+        let discovered = Arc::new(Mutex::new(Vec::new()));
+        if !cfg.peers.is_empty() {
+            let d = discovered.clone();
+            std::thread::spawn(move || {
+                loop {
+                    let found: Vec<_> = relicario_p2p::discovery::browse(Duration::from_secs(3))
+                        .into_iter()
+                        .map(|f| (f.machine, f.addrs))
+                        .collect();
+                    *d.lock().expect("lock") = found;
+                    std::thread::sleep(Duration::from_secs(300));
+                }
+            });
+        }
+        *self.p2p.lock().expect("lock") = Some(P2p {
+            server,
+            peers,
+            _advert: advert,
+            discovered,
+            last_paired,
+        });
+        Ok(())
+    }
+
+    /// Replica com os pares. Devolve mensagens e se algo chegou de outra máquina.
+    pub fn sync_peers(&self, timeout: Duration) -> (Vec<String>, bool) {
+        let cfg = self.inner.lock().expect("lock").cfg.clone();
+        let disc = self
+            .p2p
+            .lock()
+            .expect("lock")
+            .as_ref()
+            .map(|p| p.discovered.lock().expect("lock").clone())
+            .unwrap_or_default();
+        let r = crate::p2p::sync_peers(&cfg, &disc, timeout);
+        let changed = r.iter().any(|p| p.heads_in);
+        (r.into_iter().map(|p| p.message).collect(), changed)
     }
 
     fn snapshot(&self) -> (Config, Vec<Game>) {
@@ -119,6 +222,9 @@ impl Daemon {
             .and_then(|r| ops::all_associations(&r).ok())
             .unwrap_or_default();
         let m = games::matcher(&all, &assoc);
+        if let Some(p) = self.p2p.lock().expect("lock").as_ref() {
+            *p.peers.write().expect("lock") = cfg.peers.clone();
+        }
         let mut i = self.inner.lock().expect("lock");
         i.watcher.set_matcher(m);
         i.cfg = cfg;
@@ -169,6 +275,43 @@ impl Daemon {
             Request::Rescan => self
                 .reload(true)
                 .map(|_| vec!["lista de jogos atualizada".into()]),
+            Request::Reload => self
+                .reload(false)
+                .map(|_| vec!["configuração recarregada".into()]),
+            Request::PairStart { code } => match self.p2p.lock().expect("lock").as_ref() {
+                Some(p) => {
+                    *p.last_paired.lock().expect("lock") = None;
+                    p.server.start_pairing(&code, Duration::from_secs(300));
+                    Ok(vec![format!("porta {}", p.server.port())])
+                }
+                None => Err("a sincronização direta está desligada (p2p_port = 0)".into()),
+            },
+            Request::PairStatus => match self.p2p.lock().expect("lock").as_ref() {
+                Some(p) => Ok(
+                    match (
+                        p.last_paired.lock().expect("lock").clone(),
+                        p.server.pairing_open(),
+                    ) {
+                        (Some(n), _) => vec![format!("pareado com {n}")],
+                        (None, true) => vec!["aguardando".into()],
+                        (None, false) => vec!["encerrado".into()],
+                    },
+                ),
+                None => Err("a sincronização direta está desligada".into()),
+            },
+            Request::PairCancel => {
+                if let Some(p) = self.p2p.lock().expect("lock").as_ref() {
+                    p.server.cancel_pairing();
+                }
+                Ok(vec![])
+            }
+            Request::PeersSync => {
+                let (m, changed) = self.sync_peers(Duration::from_secs(5));
+                if changed {
+                    self.remote_changed.store(true, Ordering::SeqCst);
+                }
+                Ok(m)
+            }
         };
         match r {
             Ok(messages) => Response::Ok { messages },
@@ -347,8 +490,14 @@ pub fn run() -> Result<(), String> {
             }
         });
     }
+    if let Err(e) = d.start_p2p() {
+        log(&format!("sincronização direta desligada: {e}"));
+    }
     let mut last_periodic = Instant::now();
     let mut last_rescan = Instant::now();
+    let mut last_p2p = Instant::now();
+    let (m, _) = d.sync_peers(Duration::from_secs(3));
+    m.iter().for_each(|m| log(m));
     // Conferência inicial: traz o que outra máquina fez enquanto esta estava desligada.
     d.tick();
     if let Ok(m) = d.sync(None) {
@@ -361,6 +510,20 @@ pub fn run() -> Result<(), String> {
             last_rescan = Instant::now();
             if let Err(e) = d.reload(true) {
                 log(&format!("reescaneamento falhou: {e}"));
+            }
+        }
+        if last_p2p.elapsed() >= timing.p2p {
+            last_p2p = Instant::now();
+            let (m, changed) = d.sync_peers(Duration::from_secs(3));
+            if changed {
+                m.iter().for_each(|m| log(m));
+                d.remote_changed.store(true, Ordering::SeqCst);
+            }
+        }
+        if d.remote_changed.swap(false, Ordering::SeqCst) {
+            match d.sync(None) {
+                Ok(m) => m.iter().for_each(|m| log(m)),
+                Err(e) => log(&format!("conferência falhou: {e}")),
             }
         }
         if last_periodic.elapsed() >= timing.periodic {

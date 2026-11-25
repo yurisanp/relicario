@@ -133,6 +133,15 @@ O id é o BLAKE3 de `relicario-snapshot-v1\0` seguido de uma serialização can�
 - `heads`: o último snapshot de cada jogo nesta máquina.
 - `pins`: snapshots fixados, com nome. Fixados nunca são liberados.
 - `forgotten`: snapshots **desta máquina** cujos dados a retenção liberou. Os metadados continuam em `snapshots/`, para a árvore de ancestralidade continuar inteira.
+- `playtime`, `running`, `associations` (opcionais): tempo de jogo em ms, jogos abertos agora (com o horário de abertura) e executáveis associados à mão.
+- `addresses` (opcional): `host:porta` onde a máquina aceita sincronização direta. É o "cartão de visita": chega às outras máquinas por qualquer cópia do repositório.
+- `updated_at` sempre cresce (nunca volta, mesmo com o relógio voltando). Entre duas cópias, vale o maior.
+
+## Replicação
+
+Duas cópias do mesmo repositório (outra máquina, nuvem) são juntadas copiando o que falta nos dois sentidos, na ordem `keys` → `packs` → `index` → `snapshots` → `heads`. Cada arquivo é conferido antes de ser gravado: packs e índices pelo BLAKE3 do conteúdo, snapshots pelo id recalculado, heads pelo campo `machine`. Para cada `heads/<máquina>`, fica o de `updated_at` maior, e o head da própria máquina nunca é trocado pelo que veio de fora. `config` e `locks/` não viajam.
+
+Duas cópias com `id` diferente podem ser juntadas quando ambas não têm criptografia e usam os mesmos parâmetros de chunking (os nomes dos blocos são iguais nos dois).
 
 ## Travas
 

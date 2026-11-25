@@ -309,6 +309,9 @@ pub struct HeadsFile {
     /// mesma lista de nomes (o caminho de cada uma é ajustado localmente).
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub associations: BTreeMap<GameId, Vec<String>>,
+    /// Endereços (`host:porta`) onde esta máquina aceita sincronização direta.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub addresses: Vec<String>,
     pub updated_at: Millis,
 }
 
